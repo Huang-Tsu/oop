@@ -25,8 +25,8 @@ int main(){
 		cin>>dis_nodes[i];
 	for(i=0; i<tot_links; i++){
 		cin>>skip>>node1>>node2>>old_w>>new_w;
-		nodes[node1].adj_list_[node2] = pair<int, int>(old_w, new_w);
-		nodes[node2].adj_list_[node1] = pair<int, int>(old_w, new_w);
+		nodes[node1].adj_list_[node2] = {old_w, new_w};
+		nodes[node2].adj_list_[node1] = {old_w, new_w);
 	}
 
 		/* input debugger
