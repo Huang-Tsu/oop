@@ -106,7 +106,7 @@ void Relax(int start, int end, int dest){		//start:start point(node) of a link, 
 	int end_weight 						= g_nodes[end].cost_.first;
 	int link_weight 					= g_nodes[start].adj_list_[end].first;
 	int test_weight 					= start_weight+link_weight;
-	int next_node_of_end  = g_nodes[end].route_table_[dest].first;
+	int next_node_of_end  		= g_nodes[end].route_table_[dest].first;
 
 		//for old_weight of a link
 	if(start_weight != INT_MAX){	//if node_weight==INT_MAX, this node has not yet build a path from dest
