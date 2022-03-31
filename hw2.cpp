@@ -978,7 +978,7 @@ class simple_link: public link {
 simple_link::simple_link_generator simple_link::simple_link_generator::sample;
 
 class SDN_switch: public node {
-        // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+        map<unsigned int, int> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
         
         bool hi; // this is used for example; you can remove it when doing hw2
 
