@@ -30,7 +30,7 @@ int main(){
 	cin>>tot_nodes>>tot_dest_nodes>>tot_links;
 	Graph graph(tot_nodes, tot_dest_nodes);
 
-		//input total distance nodes
+		//input total destination nodes
 	for(i=0; i<tot_dest_nodes; i++){
 		cin>>destination;
 		graph.dest_[i] = destination;
