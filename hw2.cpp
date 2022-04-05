@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <map>
 #include <queue>
 #include <utility>
@@ -1172,7 +1173,7 @@ void SDN_switch::recv_handler (packet *p){
 	if(p == nullptr) 
 		return;
 
-	if (p->type() == "SDN_data_packet" && !hi ) { // the switch receives a packet from the other switch
+	if (p->type() == "SDN_data_packet") { // the switch receives a packet from the other switch
 		// cout << "node " << getNodeID() << " send the packet" << endl;
 		SDN_data_packet *p2 = nullptr;
 		p2 = dynamic_cast<SDN_data_packet*> (p);
@@ -1193,26 +1194,13 @@ void SDN_switch::recv_handler (packet *p){
 		p3 = dynamic_cast<SDN_ctrl_packet*> (p);
 		SDN_ctrl_payload *l3 = nullptr;
 		l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
-		unsigned int dst = p3->getHeader()->getDstID();
 
-		if(getNodeID() == dst){ 	//this node is the destination
-			stringstream msg; // get the msg
-			msg<<(l3->getMsg());
-			int ctrl_dst;
-			int ctrl_next;
-			msg>>ctrl_dst;
-			msg>>ctrl_next;
-			one_hop_neighbors[ctrl_dst] = ctrl_next;
-		}
-		else if(!one_hop_neighbors.count(dst))	//does not have a path to this destination
-			return;
-		else{	//forward this control packet
-			p3->getHeader()->setPreID ( getNodeID() );
-			p3->getHeader()->setNexID ( one_hop_neighbors[dst] );
-			p3->getHeader()->setDstID ( p3->getHeader()->getDstID() );
-			hi = true;
-			send_handler (p3);
-		}
+		string msg = l3->getMsg();
+		stringstream buffer;
+		buffer<<msg;
+		int dst, next;	
+		buffer>>dst>>next;
+		one_hop_neighbors[dst] = next;
 		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
 	}
 
@@ -1324,6 +1312,26 @@ class Graph{
 		}
 
 };
+class PacketEvent{
+	public:
+		int src, dst, t, id, type;
+		string msg;
+		PacketEvent(int t_, int id_, string msg_, int type_): t(t_), id(id_), msg(msg_), type(type_){}
+		PacketEvent(int t_, int src_, int dst_, int type_): t(t_), src(src_), dst(dst_), type(type_){}
+		PacketEvent(){}
+
+};
+vector<PacketEvent> packet_events;
+bool comp(PacketEvent first, PacketEvent second){
+	if(first.t != second.t) return first.t < second.t;	
+	if(first.type != second.type) return first.type < second.type;	
+	if(first.type==0 && first.id!=second.id) return first.id < second.id;
+	if(first.type==0) return first.msg < second.msg;
+
+	if(first.type==1 && first.src!=second.src) return first.src < second.src;
+	if(first.type==1) return first.dst < second.dst;
+	exit(1);
+}
 
 int main()
 {
@@ -1372,25 +1380,42 @@ int main()
 	graph.BellmanFord();
 
 		//construct real route_table
-	for(unsigned int i=0; i<tot_nodes; i++){
-		for(unsigned int j=0; j<tot_dest_nodes; j++){
-			msg = to_string(graph.dest_[j]) + " " + to_string(graph.route_table_[OLD][i][graph.dest_[j]]);
-			ctrl_packet_event(i, ins_time, msg);
+	for(unsigned int i=0; i<tot_dest_nodes; i++){
+		for(unsigned int j=0; j<tot_nodes; j++){
+			if(graph.dest_[i] != j){
+				msg = to_string(graph.dest_[i]) + " " + to_string(graph.route_table_[OLD][j][graph.dest_[i]]);
+				packet_events.push_back(PacketEvent(ins_time, j, msg, 0));
+			}
 		}
 	}
 	// generate all initial events that you want to simulate in the networks
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
 	// read the input and use data_packet_event to add an initial event
 	while(cin>>t>>src>>dst){
-		data_packet_event(src, dst, t);
+		packet_events.push_back(PacketEvent(t, src, dst, 1));
 	}
 
 		//update real route table
-	for(unsigned int i=0; i<tot_nodes; i++){
-		for(unsigned int j=0; j<tot_dest_nodes; j++){
-			msg = to_string(graph.dest_[j]) + " " + to_string(graph.route_table_[NEW][i][graph.dest_[j]]);
-			ctrl_packet_event(i, upd_time, msg);
+	for(unsigned int i=0; i<tot_dest_nodes; i++){
+		for(unsigned int j=0; j<tot_nodes; j++){
+			if(graph.dest_[i] != j &&
+				graph.route_table_[OLD][j][graph.dest_[i]] != graph.route_table_[NEW][j][graph.dest_[i]]){
+				msg = to_string(graph.dest_[i]) + " " + to_string(graph.route_table_[NEW][j][graph.dest_[i]]);
+				packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
+			}
 		}
+	}
+
+	sort(packet_events.begin(), packet_events.end(), comp);
+
+	int	packet_cnt = packet_events.size();
+	PacketEvent temp;
+	for(int i=0; i<packet_cnt; i++){
+		temp = packet_events[i];
+		if(temp.type == 0)
+			ctrl_packet_event(temp.id, temp.t, temp.msg); 
+		else
+			data_packet_event(temp.src, temp.dst, temp.t);
 	}
 	/*
 	for (unsigned int id = 0; id < node::getNodeNum(); id++){
