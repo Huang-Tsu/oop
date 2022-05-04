@@ -1262,7 +1262,6 @@ class Graph{
 			int adj_node;
 			map<int, int>::iterator iter;
 
-
 			for(int weight=0; weight<WEIGHT_CNT; weight++){
 				for(int dest=0; dest<dest_cnt; dest++){
 					this->InitNodes(dest_[dest]);	
@@ -1310,7 +1309,6 @@ class Graph{
 
 			distance_.reserve(nodes_cnt);
 		}
-
 };
 class PacketEvent{
 	public:
@@ -1435,4 +1433,3 @@ int main()
 	// cout << packet::getLivePacketNum() << endl;
 	return 0;
 }
-

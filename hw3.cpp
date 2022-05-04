@@ -6,6 +6,9 @@
 #include <functional>
 #include <iomanip>
 #include <stack>
+#define  OLD 0
+#define  NEW 1
+#define  WEIGHT_CNT 2
 
 using namespace std;
 
@@ -27,61 +30,62 @@ const unsigned int BROCAST_ID = UINT_MAX;
 // BROCAST_ID means that all neighbors are receivers; UINT_MAX is the maximum value of unsigned int
 
 class header {
+	int unused_variable;	//will not be used in the program, but without this, the format will be weired. In short, there must be something before public
  public:
-	 virtual ~header() {}
+	virtual ~header() {}
 
-	 SET(setSrcID, unsigned int , srcID, _srcID);
-	 SET(setDstID, unsigned int , dstID, _dstID);
-	 SET(setPreID, unsigned int , preID, _preID);
-	 SET(setNexID, unsigned int , nexID, _nexID);
-	 GET(getSrcID, unsigned int , srcID);
-	 GET(getDstID, unsigned int , dstID);
-	 GET(getPreID, unsigned int , preID);
-	 GET(getNexID, unsigned int , nexID);
+	SET(setSrcID, unsigned int , srcID, _srcID);
+	SET(setDstID, unsigned int , dstID, _dstID);
+	SET(setPreID, unsigned int , preID, _preID);
+	SET(setNexID, unsigned int , nexID, _nexID);
+	GET(getSrcID, unsigned int , srcID);
+	GET(getDstID, unsigned int , dstID);
+	GET(getPreID, unsigned int , preID);
+	GET(getNexID, unsigned int , nexID);
 
-	 virtual string type() = 0;
+	virtual string type() = 0;
 
-	 // factory concept: generate a header
-	 class header_generator {
-		 // lock the copy constructor
-		 header_generator(header_generator &){}
-		 // store all possible types of header
-		 static map<string,header_generator*> prototypes;
-		protected:
-		 // allow derived class to use it
-		 header_generator() {}
-		 // after you create a new header type, please register the factory of this header type by this function
-		 void register_header_type(header_generator *h) { prototypes[h->type()] = h; }
-		 // you have to implement your own generate() to generate your header
-		 virtual header* generate() = 0 ;
-		public:
-		 // you have to implement your own type() to return your header type
-		 virtual string type() = 0 ;
-		 // this function is used to generate any type of header derived
-		 static header * generate (string type) {
-			 if(prototypes.find(type) != prototypes.end()){ // if this type derived exists 
-				 return prototypes[type]->generate(); // generate it!!
-			 }
-			 std::cerr << "no such header type" << std::endl; // otherwise
-			 return nullptr;
-		 }
-		 static void print () {
-			 cout << "registered header types: " << endl;
-			 for (map<string,header::header_generator*>::iterator it = prototypes.begin(); it != prototypes.end(); it ++)
-				 cout << it->second->type() << endl;
-		 }
-		 virtual ~header_generator(){};
-	 };
+	// factory concept: generate a header
+	class header_generator {
+		// lock the copy constructor
+		header_generator(header_generator &){}
+		// store all possible types of header
+		static map<string,header_generator*> prototypes;
+	 protected:
+		// allow derived class to use it
+		header_generator() {}
+		// after you create a new header type, please register the factory of this header type by this function
+		void register_header_type(header_generator *h) { prototypes[h->type()] = h; }
+		// you have to implement your own generate() to generate your header
+		virtual header* generate() = 0 ;
+	 public:
+		// you have to implement your own type() to return your header type
+		virtual string type() = 0 ;
+		// this function is used to generate any type of header derived
+		static header * generate (string type) {
+			if(prototypes.find(type) != prototypes.end()){ // if this type derived exists 
+				return prototypes[type]->generate(); // generate it!!
+			}
+			std::cerr << "no such header type" << std::endl; // otherwise
+			return nullptr;
+		}
+		static void print () {
+			cout << "registered header types: " << endl;
+			for (map<string,header::header_generator*>::iterator it = prototypes.begin(); it != prototypes.end(); it ++)
+				cout << it->second->type() << endl;
+		}
+		virtual ~header_generator(){};
+	};
 
  protected:
-	 header():srcID(BROCAST_ID),dstID(BROCAST_ID),preID(BROCAST_ID),nexID(BROCAST_ID){} // this constructor cannot be directly called by users
+	header():srcID(BROCAST_ID),dstID(BROCAST_ID),preID(BROCAST_ID),nexID(BROCAST_ID){} // this constructor cannot be directly called by users
 
  private:
-	 unsigned int srcID;
-	 unsigned int dstID;
-	 unsigned int preID;
-	 unsigned int nexID;
-	 header(header&){} // this constructor cannot be directly called by users
+	unsigned int srcID;
+	unsigned int dstID;
+	unsigned int preID;
+	unsigned int nexID;
+	header(header&){} // this constructor cannot be directly called by users
 };
 map<string,header::header_generator*> header::header_generator::prototypes;
 
@@ -441,7 +445,7 @@ SDN_ctrl_packet::SDN_ctrl_packet_generator SDN_ctrl_packet::SDN_ctrl_packet_gene
 
 class node {
 	// all nodes created in the program
-	static map<unsigned int, node*> id_node_table;
+	static map<unsigned int, node*> id_node_table; //privete, should not be accessed directly. Instead, use id_to_node(node_id);
 
 	unsigned int id;
 	map<unsigned int,bool> phy_neighbors;
@@ -495,7 +499,7 @@ class node {
 		// allow derived class to use it
 		node_generator() {}
 		// after you create a new node type, please register the factory of this node type by this function
-		void register_node_type(node_generator *h) { prototypes[h->type()] = h; }
+		void register_node_type(node_generator *h) { prototypes[h->type()] = h; }		//store the type of h, later could be used in generator
 		// you have to implement your own generate() to generate your node
 		virtual node* generate(unsigned int _id) = 0;
 	 public:
@@ -530,7 +534,7 @@ map<string,node::node_generator*> node::node_generator::prototypes;
 map<unsigned int,node*> node::id_node_table;
 
 class SDN_switch: public node {
-	// map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+	map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
 
 	bool hi; // this is used for example; you can remove it when doing hw2
 
@@ -564,6 +568,42 @@ class SDN_switch: public node {
 	};
 };
 SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
+
+//==============new part in hw3==========
+class SDN_controller: public node {
+	map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+
+	bool hi; // this is used for example; you can remove it when doing hw2
+
+ protected:
+	SDN_controller() {} // it should not be used
+	SDN_controller(SDN_controller&) {} // it should not be used
+	SDN_controller(unsigned int _id): node(_id)/*call constructor node()*/, hi(false) {} // this constructor cannot be directly called by users
+
+ public:
+	~SDN_controller(){}
+	string type() { return "SDN_controller"; }
+
+	// please define recv_handler function to deal with the incoming packet
+	virtual void recv_handler (packet *p);
+
+	// void add_one_hop_neighbor (unsigned int n_id) { one_hop_neighbors[n_id] = true; }
+	// unsigned int get_one_hop_neighbor_num () { return one_hop_neighbors.size(); }
+
+	class SDN_controller_generator;
+	friend class SDN_controller_generator;
+	// SDN_controller_generator is derived from node_generator to generate a node
+	class SDN_controller_generator : public node_generator{
+		static SDN_controller_generator sample;
+		// this constructor is only for sample to register this node type
+		SDN_controller_generator() { /*cout << "SDN_controller registered" << endl;*/ register_node_type(&sample); }
+	 protected:
+		virtual node * generate(unsigned int _id){ /*cout << "SDN_controller generated" << endl;*/ return new SDN_controller(_id); }
+	 public:
+		virtual string type() { return "SDN_controller";}
+		~SDN_controller_generator(){}
+	};
+};//================SDN_controller definition end================================
 
 class mycomp {
 	bool reverse;
@@ -1021,67 +1061,68 @@ void SDN_data_pkt_gen_event::print () const {
 }
 
 class SDN_ctrl_pkt_gen_event: public event {
+	int fix_format;
  public:
-	 class gen_data; // forward declaration
+	class gen_data; // forward declaration
 
  private:
-	 SDN_ctrl_pkt_gen_event (SDN_ctrl_pkt_gen_event &){}
-	 SDN_ctrl_pkt_gen_event (){} // we don't allow users to new a recv_event by themselves
-	 // this constructor cannot be directly called by users; only by generator
-	 unsigned int src; // the src
-	 unsigned int dst; // the dst 
-	 unsigned int mat;
-	 unsigned int act;
-	 // packet *pkt; // the packet
-	 string msg;
+	SDN_ctrl_pkt_gen_event (SDN_ctrl_pkt_gen_event &){}
+	SDN_ctrl_pkt_gen_event (){} // we don't allow users to new a recv_event by themselves
+	// this constructor cannot be directly called by users; only by generator
+	unsigned int src; // the src
+	unsigned int dst; // the dst 
+	unsigned int mat;
+	unsigned int act;
+	// packet *pkt; // the packet
+	string msg;
 
  protected:
-	 SDN_ctrl_pkt_gen_event (unsigned int _trigger_time, void *data): event(_trigger_time), src(BROCAST_ID), dst(BROCAST_ID){
-		 pkt_gen_data * data_ptr = (pkt_gen_data*) data;
-		 src = data_ptr->src_id;
-		 dst = data_ptr->dst_id;
-		 // pkt = data_ptr->_pkt;
-		 mat = data_ptr->mat_id;
-		 act = data_ptr->act_id;
-		 msg = data_ptr->msg;
-	 } 
+	SDN_ctrl_pkt_gen_event (unsigned int _trigger_time, void *data): event(_trigger_time), src(BROCAST_ID), dst(BROCAST_ID){
+		pkt_gen_data * data_ptr = (pkt_gen_data*) data;
+		src = data_ptr->src_id;
+		dst = data_ptr->dst_id;
+		// pkt = data_ptr->_pkt;
+		mat = data_ptr->mat_id;
+		act = data_ptr->act_id;
+		msg = data_ptr->msg;
+	} 
 
  public:
-	 virtual ~SDN_ctrl_pkt_gen_event(){}
-	 // SDN_ctrl_pkt_gen_event will trigger the packet gen function
-	 virtual void trigger();
+	virtual ~SDN_ctrl_pkt_gen_event(){}
+	// SDN_ctrl_pkt_gen_event will trigger the packet gen function
+	virtual void trigger();
 
-	 unsigned int event_priority() const;
+	unsigned int event_priority() const;
 
-	 class SDN_ctrl_pkt_gen_event_generator;
-	 friend class SDN_ctrl_pkt_gen_event_generator;
-	 // SDN_ctrl_pkt_gen_event_generator is derived from event_generator to generate an event
-	 class SDN_ctrl_pkt_gen_event_generator : public event_generator{
-		 static SDN_ctrl_pkt_gen_event_generator sample;
-		 // this constructor is only for sample to register this event type
-		 SDN_ctrl_pkt_gen_event_generator() { /*cout << "send_event registered" << endl;*/ register_event_type(&sample); }
-		protected:
-		 virtual event * generate(unsigned int _trigger_time, void *data){ 
-			 // cout << "send_event generated" << endl; 
-			 return new SDN_ctrl_pkt_gen_event(_trigger_time, data); 
-		 }
+	class SDN_ctrl_pkt_gen_event_generator;
+	friend class SDN_ctrl_pkt_gen_event_generator;
+	// SDN_ctrl_pkt_gen_event_generator is derived from event_generator to generate an event
+	class SDN_ctrl_pkt_gen_event_generator : public event_generator{
+		static SDN_ctrl_pkt_gen_event_generator sample;
+		// this constructor is only for sample to register this event type
+		SDN_ctrl_pkt_gen_event_generator() { /*cout << "send_event registered" << endl;*/ register_event_type(&sample); }
+	 protected:
+		virtual event * generate(unsigned int _trigger_time, void *data){ 
+			// cout << "send_event generated" << endl; 
+			return new SDN_ctrl_pkt_gen_event(_trigger_time, data); 
+		}
 
-		public:
-		 virtual string type() { return "SDN_ctrl_pkt_gen_event";}
-		 ~SDN_ctrl_pkt_gen_event_generator(){}
-	 };
-	 // this class is used to initialize the SDN_ctrl_pkt_gen_event
-	 class pkt_gen_data{
-		public:
-			unsigned int src_id; // the controller
-			unsigned int dst_id; // the node that should update its rule
-			unsigned int mat_id; // the target of the rule
-			unsigned int act_id; // the next hop toward the target recorded in the rule
-			string msg;
-			// packet *_pkt;
-	 };
+	 public:
+		virtual string type() { return "SDN_ctrl_pkt_gen_event";}
+		~SDN_ctrl_pkt_gen_event_generator(){}
+	};
+	// this class is used to initialize the SDN_ctrl_pkt_gen_event
+	class pkt_gen_data{
+	 public:
+		 unsigned int src_id; // the controller
+		 unsigned int dst_id; // the node that should update its rule
+		 unsigned int mat_id; // the target of the rule
+		 unsigned int act_id; // the next hop toward the target recorded in the rule
+		 string msg;
+		 // packet *_pkt;
+	};
 
-	 void print () const;
+	void print () const;
 };
 SDN_ctrl_pkt_gen_event::SDN_ctrl_pkt_gen_event_generator SDN_ctrl_pkt_gen_event::SDN_ctrl_pkt_gen_event_generator::sample;
 
@@ -1109,8 +1150,10 @@ void SDN_ctrl_pkt_gen_event::trigger() {
 	hdr->setDstID(dst);
 	hdr->setPreID(src);
 	hdr->setNexID(dst); // in hw3, you should set NexID to src
-
+	// payload
 	pld->setMsg(msg);
+	pld->setMatID(mat);
+	pld->setActID(act);
 
 	recv_event::recv_data e_data;
 	e_data.s_id = src;
@@ -1403,6 +1446,67 @@ void SDN_switch::recv_handler (packet *p){
 
 	// note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
+//=====Class for BellmanFord=======//
+class Graph{
+ public:
+	 vector< vector<map<int, int> > > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
+	 vector<int> distance_;
+	 vector< vector< map< int, int> > > route_table_;
+	 vector<int> dest_;
+	 void BellmanFord(){
+		 int dest_cnt = dest_.capacity();
+		 int node_cnt = distance_.capacity();
+		 int adj_node;
+		 map<int, int>::iterator iter;
+
+		 for(int weight=0; weight<WEIGHT_CNT; weight++){
+			 for(int dest=0; dest<dest_cnt; dest++){
+				 this->InitNodes(dest_[dest]);	
+
+				 for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
+					 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
+						 for(iter=node_adj_list_[weight][node].begin(); iter!=node_adj_list_[weight][node].end(); iter++){	//對第j node之所有link relax
+							 adj_node = iter->first;
+							 this->Relax(node, adj_node, dest_[dest], weight);
+						 }
+					 }
+				 }
+
+			 }
+		 }
+	 }
+	 void InitNodes(int destination){
+		 int len = distance_.capacity();
+		 for(int i=0; i<len; i++)
+			 distance_[i] = INT_MAX;
+
+		 distance_[destination] = 0;
+	 }
+	 void Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
+		 int link_weight 					= node_adj_list_[weight_type][start][end];
+		 int test_weight 					= distance_[start]+link_weight;
+		 int next_node_of_end  		= route_table_[weight_type][end][dest];
+		 if(distance_[start] != INT_MAX){
+			 if((test_weight==distance_[end] && start<next_node_of_end) ||
+					 test_weight<distance_[end]){
+				 route_table_[weight_type][end][dest] = start;
+				 distance_[end] = test_weight;
+			 }
+		 }
+	 }
+	 Graph(int row_length, int tot_dest_nodes){
+
+		 vector< map<int, int> > route_table_row_length(row_length);
+		 route_table_.assign(WEIGHT_CNT, route_table_row_length);
+		 node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
+
+		 int nodes_cnt = row_length;
+
+		 dest_.reserve(tot_dest_nodes);
+
+		 distance_.reserve(nodes_cnt);
+	 }
+};
 
 int main()
 {
@@ -1412,48 +1516,95 @@ int main()
 	// node::node_generator::print(); // print all registered nodes
 	// event::event_generator::print(); // print all registered events
 	// link::link_generator::print(); // print all registered links 
+	unsigned int skip, node1, node2, old_w, new_w;
+	unsigned int tot_nodes, tot_dest_nodes, tot_links, destination;
+	unsigned int ins_time, upd_time, sim_duration;
+	string msg;
+	unsigned int con_id;
 
-	// read the input and generate switch nodes
-	for (unsigned int id = 0; id < 5; id ++){
-		node::node_generator::generate("SDN_switch",id);
+		// read the input and generate switch nodes
+	cin>>tot_nodes>>tot_dest_nodes>>tot_links>>ins_time>>upd_time>>sim_duration;
+	Graph graph(tot_nodes, tot_dest_nodes);
+	con_id = tot_nodes;	//con_id == last_node_id + 1
+	node::node_generator::generate("SDN_controller", con_id);	//generate DSN_controller
+
+	//input total destination nodes
+	for(unsigned int i=0; i<tot_dest_nodes; i++){
+		cin>>destination;
+		graph.dest_[i] = destination;
+		//initialize nodes route_table
+		for(unsigned int j=0; j<tot_nodes; j++){
+			graph.route_table_[OLD][j][destination] = graph.route_table_[NEW][j][destination] = -1;
+		}
 	}
-	unsigned int con_id = node::getNodeNum();
-	// set switches' neighbors
-	node::id_to_node(0)->add_phy_neighbor(1);
-	node::id_to_node(1)->add_phy_neighbor(0);
-	node::id_to_node(0)->add_phy_neighbor(2);
-	node::id_to_node(2)->add_phy_neighbor(0);
-	node::id_to_node(1)->add_phy_neighbor(2);
-	node::id_to_node(2)->add_phy_neighbor(1);
-	node::id_to_node(1)->add_phy_neighbor(3);
-	node::id_to_node(3)->add_phy_neighbor(1);
-	node::id_to_node(2)->add_phy_neighbor(4);
-	node::id_to_node(4)->add_phy_neighbor(2);
 
+	for (unsigned int id = 0; id < tot_nodes; id ++){
+		node::node_generator::generate("SDN_switch", id);
+		//make connection between this newly generated SDN_switch with SDN_controller
+		node::id_to_node(id)->add_phy_neighbor(con_id);
+		node::id_to_node(con_id)->add_phy_neighbor(id);
+	}
 
-	// generate all initial events that you want to simulate in the networks
+	for(unsigned int i=0; i<tot_links; i++){
+		cin>>skip>>node1>>node2>>old_w>>new_w;
+		//set my route table
+		graph.node_adj_list_[OLD][node1][node2] = old_w;
+		graph.node_adj_list_[OLD][node2][node1] = old_w;
+		graph.node_adj_list_[NEW][node1][node2] = new_w;
+		graph.node_adj_list_[NEW][node2][node1] = new_w;
+		// set switches' neighbors
+		node::id_to_node(node1)->add_phy_neighbor(node2);
+		node::id_to_node(node2)->add_phy_neighbor(node1);
+	}
+
+		//construct my route_table
+	graph.BellmanFord();
+
+	//// dst = 0;
+	//for (unsigned int id = 0; id < node::getNodeNum(); id ++){
+	//	// for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
+	//	ctrl_packet_event(con_id, id, id, id+1, 100);
+	// note that we don't need to use msg for network update anymore in hw3
+	// thus, function ctrl_packet_event is updated as follows:
+	// 1st paremeter: controller_id
+	// 2st parameter: the node that has to update the rule
+	// 3nd parameter: the target node of the rule (i.e., match ID)
+	// 4rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID)
+	// 5th parameter: time (optional)
+	// 6th parameter: msg for debug (optional)
+
+	// !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
+	// !!!! to generate the new ctrl msg in the next round
+	//}
+		//construct real route_table
+	for(unsigned int i=0; i<tot_dest_nodes; i++){
+		for(unsigned int j=0; j<tot_nodes; j++){
+			if(graph.dest_[i] != j){
+				ctrl_packet_event(con_id, id, id, id+1, 100);
+			}
+		}
+	}
+	//// generate all initial events that you want to simulate in the networks
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
-	// read the input and use data_packet_event to add an initial event
-	data_packet_event(src, dst, t);
-	// 1st parameter: the source node
-	// 2nd parameter: the destination node
-	// 3rd parameter: time
-	// 4th parameter: msg for debug (optional)
+	//// read the input and use data_packet_event to add an initial event
+	while(cin>>t>>src>>dst){
+		data_packer_event(src, dst, t);
+		//data_packet_event(src, dst, t);
+		//// 1st parameter: the source node
+		//// 2nd parameter: the destination node
+		//// 3rd parameter: time
+		//// 4th parameter: msg for debug (optional)
+	}
 
-	// dst = 0;
-	for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-		// for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-		ctrl_packet_event(con_id, id, id, id+1, 100);
-		// note that we don't need to use msg for network update anymore in hw3
-		// thus, function ctrl_packet_event is updated as follows:
-		// 1st parameter: the node that has to update the rule
-		// 2nd parameter: the target node of the rule (i.e., match ID)
-		// 3rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID)
-		// 4th parameter: time (optional)
-		// 5th parameter: msg for debug (optional)
-
-		// !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
-		// !!!! to generate the new ctrl msg in the next round
+		//update real route table
+	for(unsigned int i=0; i<tot_dest_nodes; i++){
+		for(unsigned int j=0; j<tot_nodes; j++){
+			if(graph.dest_[i] != j &&
+				graph.route_table_[OLD][j][graph.dest_[i]] != graph.route_table_[NEW][j][graph.dest_[i]]){
+				msg = to_string(graph.dest_[i]) + " " + to_string(graph.route_table_[NEW][j][graph.dest_[i]]);
+				packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
+			}
+		}
 	}
 
 	// start simulation!!
@@ -1461,5 +1612,5 @@ int main()
 	// event::flush_events() ;
 	// cout << packet::getLivePacketNum() << endl;
 	return 0;
-	}
+}
 
