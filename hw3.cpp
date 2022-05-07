@@ -359,7 +359,7 @@ class packet{
 		virtual ~packet_generator(){};
 	};
 };
-map<string,packet::packet_generator*> packet::packet_generator::prototypes;
+map<string, packet::packet_generator*> packet::packet_generator::prototypes;
 unsigned int packet::last_packet_id = 0 ;
 int packet::live_packet_num = 0;
 
@@ -448,7 +448,7 @@ class node {
 	static map<unsigned int, node*> id_node_table; //privete, should not be accessed directly. Instead, use id_to_node(node_id);
 
 	unsigned int id;
-	map<unsigned int,bool> phy_neighbors;
+	map<unsigned int, bool> phy_neighbors;
 
  protected:
 	node(node&){} // this constructor should not be used
@@ -571,7 +571,7 @@ SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
 
 //==============new part in hw3==========
 class SDN_controller: public node {
-	map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+	//map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
 
 	bool hi; // this is used for example; you can remove it when doing hw2
 
@@ -582,13 +582,12 @@ class SDN_controller: public node {
 
  public:
 	~SDN_controller(){}
+	map<int, vector<int> > ctrl_packers;	//map< dest., vector<update_events> >
 	string type() { return "SDN_controller"; }
 
 	// please define recv_handler function to deal with the incoming packet
 	virtual void recv_handler (packet *p);
 
-	// void add_one_hop_neighbor (unsigned int n_id) { one_hop_neighbors[n_id] = true; }
-	// unsigned int get_one_hop_neighbor_num () { return one_hop_neighbors.size(); }
 
 	class SDN_controller_generator;
 	friend class SDN_controller_generator;
@@ -1149,7 +1148,7 @@ void SDN_ctrl_pkt_gen_event::trigger() {
 	hdr->setSrcID(src); 
 	hdr->setDstID(dst);
 	hdr->setPreID(src);
-	hdr->setNexID(dst); // in hw3, you should set NexID to src
+	hdr->setNexID(src); // in hw3, you should set NexID to src //check
 	// payload
 	pld->setMsg(msg);
 	pld->setMatID(mat);
@@ -1157,7 +1156,7 @@ void SDN_ctrl_pkt_gen_event::trigger() {
 
 	recv_event::recv_data e_data;
 	e_data.s_id = src;
-	e_data.r_id = dst; // in hw3, you should set r_id it src
+	e_data.r_id = src; // in hw3, you should set r_id it src	//check
 	e_data._pkt = pkt;
 
 	recv_event *e = dynamic_cast<recv_event*> ( event::event_generator::generate("recv_event",trigger_time, (void *)&e_data) );
@@ -1331,7 +1330,7 @@ void ctrl_packet_event (unsigned int con_id, unsigned int id, unsigned int mat, 
 	e_data.act_id = act;
 	e_data.msg = msg;
 
-	SDN_ctrl_pkt_gen_event *e = dynamic_cast<SDN_ctrl_pkt_gen_event*> ( event::event_generator::generate("SDN_ctrl_pkt_gen_event",t, (void *)&e_data) );
+	SDN_ctrl_pkt_gen_event *e = dynamic_cast<SDN_ctrl_pkt_gen_event*> ( event::event_generator::generate("SDN_ctrl_pkt_gen_event", t, (void *)&e_data) );
 	if (e == nullptr) cerr << "event type is incorrect" << endl;
 }
 
@@ -1380,15 +1379,22 @@ void SDN_switch::recv_handler (packet *p){
 	// node 0 broadcasts its message to every node and every node relays the packet "only once"
 	// the variable hi is used to examine whether the packet has been received before
 	// you can remove the variable hi and create your own variables in class SDN_switch
-	if (p == nullptr) return ;
+	if(p == nullptr) 
+		return;
 
-	if (p->type() == "SDN_data_packet" && !hi ) { // the switch receives a packet from the other switch
+	if (p->type() == "SDN_data_packet") { // the switch receives a packet from the other switch
 		// cout << "node " << getNodeID() << " send the packet" << endl;
-		SDN_data_packet * p2 = nullptr;
+		SDN_data_packet *p2 = nullptr;
 		p2 = dynamic_cast<SDN_data_packet*> (p);
-		p2->getHeader()->setPreID ( getNodeID() );
-		p2->getHeader()->setNexID ( BROCAST_ID );
-		p2->getHeader()->setDstID ( BROCAST_ID );
+		unsigned int dst = p2->getHeader()->getDstID();
+
+		if(getNodeID() == dst) 	//this node is the destination
+			return;
+		if(!one_hop_neighbors.count(dst))	//does not have a path to this destination
+			return;
+		p2->getHeader()->setPreID(getNodeID());
+		p2->getHeader()->setNexID(one_hop_neighbors[dst]);
+		p2->getHeader()->setDstID(dst);
 		hi = true;
 		send_handler (p2);
 	}
@@ -1398,9 +1404,11 @@ void SDN_switch::recv_handler (packet *p){
 		SDN_ctrl_payload *l3 = nullptr;
 		l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
 
-		unsigned mat = l3->getMatID();
-		unsigned act = l3->getActID();
-		// string msg = l3->getMsg(); // get the msg
+		unsigned int dst = l3->getMatID();
+		unsigned int next = l3->getActID();
+		
+		one_hop_neighbors[dst] = next;
+		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
 	}
 
 	// you should implement the SDN's distributed algorithm in recv_handler
@@ -1494,6 +1502,7 @@ class Graph{
 			 }
 		 }
 	 }
+	 Graph(){}
 	 Graph(int row_length, int tot_dest_nodes){
 
 		 vector< map<int, int> > route_table_row_length(row_length);
@@ -1506,6 +1515,7 @@ class Graph{
 
 		 distance_.reserve(nodes_cnt);
 	 }
+	 ~Graph(){};
 };
 
 int main()
@@ -1523,7 +1533,8 @@ int main()
 	unsigned int con_id;
 
 		// read the input and generate switch nodes
-	cin>>tot_nodes>>tot_dest_nodes>>tot_links>>ins_time>>upd_time>>sim_duration;
+	cin>>tot_nodes>>tot_dest_nodes>>tot_links
+		 >>ins_time>>upd_time>>sim_duration;
 	Graph graph(tot_nodes, tot_dest_nodes);
 	con_id = tot_nodes;	//con_id == last_node_id + 1
 	node::node_generator::generate("SDN_controller", con_id);	//generate DSN_controller
@@ -1580,7 +1591,7 @@ int main()
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		for(unsigned int j=0; j<tot_nodes; j++){
 			if(graph.dest_[i] != j){
-				ctrl_packet_event(con_id, id, id, id+1, 100);
+				ctrl_packet_event(con_id, j, graph.dest_[i], graph.route_table_[OLD][j][graph.dest_[i]], ins_time);
 			}
 		}
 	}
@@ -1588,12 +1599,7 @@ int main()
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
 	//// read the input and use data_packet_event to add an initial event
 	while(cin>>t>>src>>dst){
-		data_packer_event(src, dst, t);
-		//data_packet_event(src, dst, t);
-		//// 1st parameter: the source node
-		//// 2nd parameter: the destination node
-		//// 3rd parameter: time
-		//// 4th parameter: msg for debug (optional)
+		data_packet_event(src, dst, t);
 	}
 
 		//update real route table
@@ -1608,7 +1614,7 @@ int main()
 	}
 
 	// start simulation!!
-	event::start_simulate(simple_link_generatorn);
+	event::start_simulate(sim_duration);
 	// event::flush_events() ;
 	// cout << packet::getLivePacketNum() << endl;
 	return 0;
