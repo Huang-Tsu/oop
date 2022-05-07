@@ -558,8 +558,9 @@ class SDN_switch: public node {
 	// SDN_switch is derived from node_generator to generate a node
 	class SDN_switch_generator : public node_generator{
 		static SDN_switch_generator sample;
+		static int hello;
 		// this constructor is only for sample to register this node type
-		SDN_switch_generator() { /*cout << "SDN_switch registered" << endl;*/ register_node_type(&sample); }
+		SDN_switch_generator() { /*cout << "SDN_switch registered" << endl;*/ register_node_type(&sample);}
 	 protected:
 		virtual node * generate(unsigned int _id){ /*cout << "SDN_switch generated" << endl;*/ return new SDN_switch(_id); }
 	 public:
@@ -602,7 +603,9 @@ class SDN_controller: public node {
 		virtual string type() { return "SDN_controller";}
 		~SDN_controller_generator(){}
 	};
-};//================SDN_controller definition end================================
+};
+SDN_controller::SDN_controller_generator SDN_controller::SDN_controller_generator::sample;
+//================SDN_controller definition end================================
 
 class mycomp {
 	bool reverse;
@@ -1370,7 +1373,29 @@ void node::send(packet *p){ // this function is called by event; not for the use
 	}
 	packet::discard(p);
 }
+void SDN_controller::recv_handler (packet *p){
+	// in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
 
+	// this is a simple example
+	// node 0 broadcasts its message to every node and every node relays the packet "only once"
+	// the variable hi is used to examine whether the packet has been received before
+	// you can remove the variable hi and create your own variables in class SDN_switch
+	if(p == nullptr) 
+		return;
+
+//	else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
+//		SDN_ctrl_packet *p3 = nullptr;
+//		p3 = dynamic_cast<SDN_ctrl_packet*> (p);
+//		SDN_ctrl_payload *l3 = nullptr;
+//		l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
+//
+//		unsigned int dst = l3->getMatID();
+//		unsigned int next = l3->getActID();
+//		
+//		one_hop_neighbors[dst] = next;
+//		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
+//	}
+}
 // you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
 	// in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
@@ -1522,9 +1547,9 @@ int main()
 {
 	// header::header_generator::print(); // print all registered headers
 	// payload::payload_generator::print(); // print all registered payloads
-	// packet::packet_generator::print(); // print all registered packets
-	// node::node_generator::print(); // print all registered nodes
-	// event::event_generator::print(); // print all registered events
+	 packet::packet_generator::print(); // print all registered packets
+	 node::node_generator::print(); // print all registered nodes
+	 event::event_generator::print(); // print all registered events
 	// link::link_generator::print(); // print all registered links 
 	unsigned int skip, node1, node2, old_w, new_w;
 	unsigned int tot_nodes, tot_dest_nodes, tot_links, destination;
@@ -1608,7 +1633,7 @@ int main()
 			if(graph.dest_[i] != j &&
 				graph.route_table_[OLD][j][graph.dest_[i]] != graph.route_table_[NEW][j][graph.dest_[i]]){
 				msg = to_string(graph.dest_[i]) + " " + to_string(graph.route_table_[NEW][j][graph.dest_[i]]);
-				packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
+				//packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
 			}
 		}
 	}
