@@ -1541,8 +1541,8 @@ int main()
 	for (unsigned int id = 0; id < tot_nodes; id ++){
 		node::node_generator::generate("SDN_switch", id);
 		//make connection between this newly generated SDN_switch with SDN_controller
-		node::id_to_node(id)->add_phy_neighbor(con_id);
-		node::id_to_node(con_id)->add_phy_neighbor(id);
+		node::id_to_node(id)->add_phy_neighbor(con_id);	//build connection with controller
+		node::id_to_node(con_id)->add_phy_neighbor(id);	
 	}
 
 	for(unsigned int i=0; i<tot_links; i++){
@@ -1608,7 +1608,7 @@ int main()
 	}
 
 	// start simulation!!
-	event::start_simulate(300);
+	event::start_simulate(simple_link_generatorn);
 	// event::flush_events() ;
 	// cout << packet::getLivePacketNum() << endl;
 	return 0;
