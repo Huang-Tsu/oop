@@ -646,8 +646,9 @@ class SDN_controller: public node {
 
  public:
 	Graph graph;
+	map<unsigned int, vector<unsigned int> > packet_now;	//map<dests, vector<nodes_id> >
+	map<unsigned int, vector<unsigned int> > packet_next;
 	~SDN_controller(){}
-	map<int, vector<int> > ctrl_packets;	//map< dest., vector<update_events> >
 	string type() { return "SDN_controller"; }
 
 	// please define recv_handler function to deal with the incoming packet
@@ -1450,20 +1451,88 @@ void SDN_controller::recv_handler (packet *p){
 	SDN_ctrl_packet *p3 = dynamic_cast<SDN_ctrl_packet*> (p);
 	SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
 	SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
-		unsigned int match = l3->getMatID();
-		unsigned int dst = h3->getDstID();
+	int empty_array = 1;
+	unsigned int match = l3->getMatID();
+	unsigned int dst = h3->getDstID();
+	map< int, map<int, int> > node_state = graph.node_state_;	// map< dest_id, map<node_id, state> >
 
-	if(h3->getDstID() == getNodeID()){
+	if(h3->getDstID() == getNodeID()){	//ack packet (send from nodes)
+		unsigned int src = h3->getSrcID();
 		//handle ack packet
-		SDN_controller::graph.node_state_[match][dst] ++;
+		//graph.node_state_[match][dst] ++;
+	//		cout<<"node_state:"<<node_state[match][src]<<'\n';
+		if(node_state[match][src] == 0){	//fack ack!!!//node_state為0表示是初始狀態回傳的ack，不用進行update
+			;//skip	
+		}
+	//		cout<<"node_state:"<<node_state[match][src]<<'\n';
+		else if(node_state[match][src] == 1){//real ack!!!(update_packet ack)
+			node_state[match][src] ++; 
+				//check whether this round finished?
+			for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){	//travese packet_now 的每個nodes
+				if(node_state[match][*it] != 2)	{	//at least one node haven't been update: array not be fully updated
+					empty_array = 0;
+					break;
+				}
+				//end check====================
+			}
+			if(empty_array){	//if empty
+				packet_now[match].clear();		//clear this round nodes
+				packet_now[match].assign(packet_next[match].begin(), packet_next[match].end()); //copy next round to this round
+				packet_next[match].clear();			//clera next round, for saving new next round
+				for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
+					ctrl_packet_event(getNodeID(), *it, match, graph.route_table_[NEW][*it][match]);	//route_table_[update][node_now][dst]
+						//put all of it's neighbor to next round
+					const map<unsigned int,bool> &nblist = getPhyNeighbors();
+					for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {
+						if(it->first != getNodeID()){
+							if(node_state[match][it->first] != 2){
+								packet_next[match].push_back(it->first);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
-	else{	//send packet to Dst
-			cout<<"hello!\n";
-		SDN_controller::graph.node_state_[match][dst] ++;
-
-		h3->setPreID(getNodeID());
-		h3->setNexID(h3->getDstID());
-		send_handler(p3);
+	else{	//get from ctrl_packet_event();
+			//case of not send packet
+		if(node_state[match][dst]==0 && graph.route_table_[OLD][dst][match]==graph.route_table_[NEW][dst][match]){	//node has been constructed with origin route_table, and have not to be updated
+			node_state[match][dst] = 2;//new link is the same as old link, no need to update
+																//set it's update_state to finished
+				//check whether this round finished?
+			for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){	//travese packet_now 的每個nodes
+				if(node_state[match][*it] != 2)	{	//at least one node haven't been update: array not be fully updated
+					empty_array = 0;
+					break;
+				}
+				//end check====================
+			}
+			if(empty_array){	//if empty
+				packet_now[match].clear();		//clear this round nodes
+				packet_now[match].assign(packet_next[match].begin(), packet_next[match].end()); //copy next round to this round
+				packet_next[match].clear();			//clera next round, for saving new next round
+				for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
+					ctrl_packet_event(getNodeID(), *it, match, graph.route_table_[NEW][*it][match]);	//route_table_[update][node_now][dst]
+						//put all of it's neighbor to next round
+					const map<unsigned int,bool> &nblist = getPhyNeighbors();
+					for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {
+						if(it->first != getNodeID()){		//neighbor != controller
+							if(node_state[match][it->first] != 2){
+								packet_next[match].push_back(it->first);
+							}
+						}
+					}
+				}
+			}
+		}
+		else{		//have not yet been constructed or update_ctrlpacket(new_link != old_link)  =====>send packet
+			//	cout<<"node_state:"<<node_state[match][dst]<<'\n';
+			node_state[match][dst] ++;
+			//	cout<<"node_state:"<<node_state[match][dst]<<'\n';
+			h3->setPreID(getNodeID());
+			h3->setNexID(h3->getDstID());
+			send_handler(p3);
+		}
 	}
 //		
 //		one_hop_neighbors[dst] = next;
@@ -1500,7 +1569,7 @@ void SDN_switch::recv_handler (packet *p){
 		send_handler (p2);
 	}
 	else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
-					cout<<"hello in SDN_switch!\n";
+					//cout<<"hello in SDN_switch!\n";
 		SDN_ctrl_packet *p3 = dynamic_cast<SDN_ctrl_packet*> (p);
 		SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
 		SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
@@ -1570,9 +1639,9 @@ int main()
 {
 	// header::header_generator::print(); // print all registered headers
 	// payload::payload_generator::print(); // print all registered payloads
-	 packet::packet_generator::print(); // print all registered packets
-	 node::node_generator::print(); // print all registered nodes
-	 event::event_generator::print(); // print all registered events
+	// packet::packet_generator::print(); // print all registered packets
+	// node::node_generator::print(); // print all registered nodes
+	// event::event_generator::print(); // print all registered events
 	// link::link_generator::print(); // print all registered links 
 	unsigned int skip, node1, node2, old_w, new_w;
 	unsigned int tot_nodes, tot_dest_nodes, tot_links, destination;
@@ -1628,17 +1697,17 @@ int main()
 
 		//construct my route_table
 	controller->graph.BellmanFord();
-		cout<<"1\n";
-					for(unsigned int i=0; i<tot_dest_nodes; i++){
-						cout<<"dest:"<<destination<<'\n';
-						for(unsigned int j=0; j<tot_nodes; j++){
-							destination = controller->graph.dest_[i];
-							if(destination != j){
-								cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
-							}
-						}
-						puts("");
-					}
+		//cout<<"1\n";
+		//			for(unsigned int i=0; i<tot_dest_nodes; i++){
+		//				cout<<"dest:"<<destination<<'\n';
+		//				for(unsigned int j=0; j<tot_nodes; j++){
+		//					destination = controller->graph.dest_[i];
+		//					if(destination != j){
+		//						cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
+		//					}
+		//				}
+		//				puts("");
+		//			}
 
 	//// dst = 0;
 	//for (unsigned int id = 0; id < node::getNodeNum(); id ++){
@@ -1665,17 +1734,6 @@ int main()
 			}
 		}
 	}
-		cout<<"2\n";
-					for(unsigned int i=0; i<tot_dest_nodes; i++){
-						cout<<"dest:"<<destination<<'\n';
-						for(unsigned int j=0; j<tot_nodes; j++){
-							destination = controller->graph.dest_[i];
-							if(destination != j){
-								cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
-							}
-						}
-						puts("");
-					}
 	//// generate all initial events that you want to simulate in the networks
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
 	//// read the input and use data_packet_event to add an initial event
@@ -1684,21 +1742,69 @@ int main()
 	}
 
 		//update real route table
+	node *node_now;
+	node *node_next;
+	
+	unsigned int neighbor_id;
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
-		for(unsigned int j=0; j<tot_nodes; j++){
-			destination = controller->graph.dest_[i];
-			if(destination != j &&
-				controller->graph.route_table_[OLD][j][destination] != controller->graph.route_table_[NEW][j][destination]){
-				msg = to_string(destination) + " " + to_string(controller->graph.route_table_[NEW][j][destination]);
-				//packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
+		destination = controller->graph.dest_[i];
+		node_now = node::id_to_node(destination);		//node_now = dest_node;
+		const map<unsigned int,bool> &nblist = node_now->getPhyNeighbors();	
+			for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {
+				neighbor_id = it->first;
+				if(it->first != con_id){//node != controller
+						//cout<<"con_id"<<con_id<<' '
+						//		<<"neighbor_id:"<<neighbor_id<<' '
+						//		<<"destination:"<<destination<<' '
+						//		<<"controller->graph.route_table_[NEW][(int)neighbor_id][destination]:"<<controller->graph.route_table_[NEW][(int)neighbor_id][destination]<<' '
+						//		<<"upd_time:"<<upd_time<<'\n';
+					ctrl_packet_event(con_id, neighbor_id, destination, controller->graph.route_table_[NEW][(int)neighbor_id][destination], upd_time);	//ctrl(con_id, dst, mat, act, upd_time);
+					controller->packet_now[destination].push_back(neighbor_id);	//丟入現在處理的node列
+						//蒐集丟入的node的neighbour，為下一次要處理的node
+					node_next = node::id_to_node(neighbor_id);
+					const map<unsigned int,bool> &nblist1 = node_next->getPhyNeighbors();	
+					for (map<unsigned int,bool>::const_iterator it1 = nblist1.begin(); it1 != nblist1.end(); it1 ++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
+						if(it1->first != con_id){	//node != controller
+							if(controller->graph.node_state_[destination][it->first] != 2){
+								controller->packet_next[destination].push_back(it1->first);
+							}
+						}
+					}	//丟入neighbor結束=======
+				}
 			}
-		}
+			//for(unsigned int j=0; j<tot_nodes; j++){
+			//	if(controller
+			//}
+
+
+		
 	}
+	//for(unsigned int i=0; i<tot_dest_nodes; i++){
+	//	for(unsigned int j=0; j<tot_nodes; j++){
+	//		destination = controller->graph.dest_[i];
+	//		if(destination != j &&
+	//			controller->graph.route_table_[OLD][j][destination] != controller->graph.route_table_[NEW][j][destination]){
+	//			msg = to_string(destination) + " " + to_string(controller->graph.route_table_[NEW][j][destination]);
+	//			//packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
+	//		}
+	//	}
+	//}
 
 	// start simulation!!
 	event::start_simulate(sim_duration);
 	// event::flush_events() ;
 	// cout << packet::getLivePacketNum() << endl;
+	//	cout<<"2\n";
+	//				for(unsigned int i=0; i<tot_dest_nodes; i++){
+	//					cout<<"dest:"<<destination<<'\n';
+	//					for(unsigned int j=0; j<tot_nodes; j++){
+	//						destination = controller->graph.dest_[i];
+	//						if(destination != j){
+	//							cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
+	//						}
+	//					}
+	//					puts("");
+	//				}
 	return 0;
 }
 
