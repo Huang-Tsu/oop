@@ -415,7 +415,7 @@ class SDN_ctrl_packet: public packet {
 		//DFS_path = (dynamic_cast<SDN_ctrl_header*>(p))->DFS_path;
 		//isVisited = (dynamic_cast<SDN_ctrl_header*>(p))->isVisited;
 	} // for duplicate
-	SDN_ctrl_packet(string _h, string _p): packet(_h,_p) {}
+	SDN_ctrl_packet(string _h, string _p): packet(_h, _p) {}
 
  public:
 	virtual ~SDN_ctrl_packet(){}
@@ -570,6 +570,69 @@ class SDN_switch: public node {
 };
 SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
 
+//=====Class for BellmanFord=======//
+class Graph{
+ public:
+	 vector< vector<map<int, int> > > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
+	 vector<int> distance_;
+	 vector< vector< map< int, int> > > route_table_;
+	 vector<int> dest_;
+	 map< int, map<int, int> > node_state_;	// map< dest_id, map<node_id, state> >
+	 void BellmanFord(){
+		 int dest_cnt = dest_.capacity();
+		 int node_cnt = distance_.capacity();
+		 int adj_node;
+		 map<int, int>::iterator iter;
+
+		 for(int weight=0; weight<WEIGHT_CNT; weight++){
+			 for(int dest=0; dest<dest_cnt; dest++){
+				 this->InitNodes(dest_[dest]);	
+
+				 for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
+					 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
+						 for(iter=node_adj_list_[weight][node].begin(); iter!=node_adj_list_[weight][node].end(); iter++){	//對第j node之所有link relax
+							 adj_node = iter->first;
+							 this->Relax(node, adj_node, dest_[dest], weight);
+						 }
+					 }
+				 }
+
+			 }
+		 }
+	 }
+	 void InitNodes(int destination){
+		 int len = distance_.capacity();
+		 for(int i=0; i<len; i++)
+			 distance_[i] = INT_MAX;
+
+		 distance_[destination] = 0;
+	 }
+	 void Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
+		 int link_weight 					= node_adj_list_[weight_type][start][end];
+		 int next_node_of_end  		= route_table_[weight_type][end][dest];
+		 if(distance_[start] != INT_MAX){
+			int test_weight 					= distance_[start]+link_weight;
+			 if((test_weight==distance_[end] && start<next_node_of_end) ||
+					 test_weight<distance_[end]){
+				 route_table_[weight_type][end][dest] = start;
+				 distance_[end] = test_weight;
+			 }
+		 }
+	 }
+	 Graph(){}
+	 Graph(int row_length, int tot_dest_nodes){
+		 vector< map<int, int> > route_table_row_length(row_length);
+		 route_table_.assign(WEIGHT_CNT, route_table_row_length);
+		 node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
+
+		 int nodes_cnt = row_length;
+
+		 dest_.reserve(tot_dest_nodes);
+
+		 distance_.reserve(nodes_cnt);
+	 }
+	 ~Graph(){};
+};
 //==============new part in hw3==========
 class SDN_controller: public node {
 	//map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
@@ -582,8 +645,9 @@ class SDN_controller: public node {
 	SDN_controller(unsigned int _id): node(_id)/*call constructor node()*/, hi(false) {} // this constructor cannot be directly called by users
 
  public:
+	Graph graph;
 	~SDN_controller(){}
-	map<int, vector<int> > ctrl_packers;	//map< dest., vector<update_events> >
+	map<int, vector<int> > ctrl_packets;	//map< dest., vector<update_events> >
 	string type() { return "SDN_controller"; }
 
 	// please define recv_handler function to deal with the incoming packet
@@ -1383,18 +1447,32 @@ void SDN_controller::recv_handler (packet *p){
 	if(p == nullptr) 
 		return;
 
-//	else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
-//		SDN_ctrl_packet *p3 = nullptr;
-//		p3 = dynamic_cast<SDN_ctrl_packet*> (p);
-//		SDN_ctrl_payload *l3 = nullptr;
-//		l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
-//
-//		unsigned int dst = l3->getMatID();
-//		unsigned int next = l3->getActID();
+	SDN_ctrl_packet *p3 = dynamic_cast<SDN_ctrl_packet*> (p);
+	SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
+	SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
+		unsigned int match = l3->getMatID();
+		unsigned int dst = h3->getDstID();
+
+	if(h3->getDstID() == getNodeID()){
+		//handle ack packet
+		SDN_controller::graph.node_state_[match][dst] ++;
+	}
+	else{	//send packet to Dst
+			cout<<"hello!\n";
+		SDN_controller::graph.node_state_[match][dst] ++;
+
+		h3->setPreID(getNodeID());
+		h3->setNexID(h3->getDstID());
+		send_handler(p3);
+	}
 //		
 //		one_hop_neighbors[dst] = next;
 //		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
 //	}
+	// you can use p->getHeader()->setSrcID() or getSrcID()
+	//             p->getHeader()->setDstID() or getDstID()
+	//             p->getHeader()->setPreID() or getPreID()
+	//             p->getHeader()->setNexID() or getNexID() to change or read the packet header
 }
 // you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
@@ -1409,8 +1487,7 @@ void SDN_switch::recv_handler (packet *p){
 
 	if (p->type() == "SDN_data_packet") { // the switch receives a packet from the other switch
 		// cout << "node " << getNodeID() << " send the packet" << endl;
-		SDN_data_packet *p2 = nullptr;
-		p2 = dynamic_cast<SDN_data_packet*> (p);
+		SDN_data_packet *p2 = dynamic_cast<SDN_data_packet*> (p);
 		unsigned int dst = p2->getHeader()->getDstID();
 
 		if(getNodeID() == dst) 	//this node is the destination
@@ -1419,20 +1496,28 @@ void SDN_switch::recv_handler (packet *p){
 			return;
 		p2->getHeader()->setPreID(getNodeID());
 		p2->getHeader()->setNexID(one_hop_neighbors[dst]);
-		p2->getHeader()->setDstID(dst);
 		hi = true;
 		send_handler (p2);
 	}
 	else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
-		SDN_ctrl_packet *p3 = nullptr;
-		p3 = dynamic_cast<SDN_ctrl_packet*> (p);
-		SDN_ctrl_payload *l3 = nullptr;
-		l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
+					cout<<"hello in SDN_switch!\n";
+		SDN_ctrl_packet *p3 = dynamic_cast<SDN_ctrl_packet*> (p);
+		SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
+		SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
 
 		unsigned int dst = l3->getMatID();
 		unsigned int next = l3->getActID();
 		
 		one_hop_neighbors[dst] = next;
+
+			//send packet back. swap(src, dst) => src=dst_origin, dst=src_origin
+		unsigned int src_origin = h3->getSrcID();
+		unsigned int dst_origin = h3->getDstID();
+		h3->setSrcID(dst_origin); 
+		h3->setDstID(src_origin); 
+		h3->setPreID(dst_origin);
+		h3->setNexID(src_origin);
+		send_handler(p3);
 		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
 	}
 
@@ -1479,69 +1564,7 @@ void SDN_switch::recv_handler (packet *p){
 
 	// note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
-//=====Class for BellmanFord=======//
-class Graph{
- public:
-	 vector< vector<map<int, int> > > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
-	 vector<int> distance_;
-	 vector< vector< map< int, int> > > route_table_;
-	 vector<int> dest_;
-	 void BellmanFord(){
-		 int dest_cnt = dest_.capacity();
-		 int node_cnt = distance_.capacity();
-		 int adj_node;
-		 map<int, int>::iterator iter;
 
-		 for(int weight=0; weight<WEIGHT_CNT; weight++){
-			 for(int dest=0; dest<dest_cnt; dest++){
-				 this->InitNodes(dest_[dest]);	
-
-				 for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
-					 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
-						 for(iter=node_adj_list_[weight][node].begin(); iter!=node_adj_list_[weight][node].end(); iter++){	//對第j node之所有link relax
-							 adj_node = iter->first;
-							 this->Relax(node, adj_node, dest_[dest], weight);
-						 }
-					 }
-				 }
-
-			 }
-		 }
-	 }
-	 void InitNodes(int destination){
-		 int len = distance_.capacity();
-		 for(int i=0; i<len; i++)
-			 distance_[i] = INT_MAX;
-
-		 distance_[destination] = 0;
-	 }
-	 void Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
-		 int link_weight 					= node_adj_list_[weight_type][start][end];
-		 int test_weight 					= distance_[start]+link_weight;
-		 int next_node_of_end  		= route_table_[weight_type][end][dest];
-		 if(distance_[start] != INT_MAX){
-			 if((test_weight==distance_[end] && start<next_node_of_end) ||
-					 test_weight<distance_[end]){
-				 route_table_[weight_type][end][dest] = start;
-				 distance_[end] = test_weight;
-			 }
-		 }
-	 }
-	 Graph(){}
-	 Graph(int row_length, int tot_dest_nodes){
-
-		 vector< map<int, int> > route_table_row_length(row_length);
-		 route_table_.assign(WEIGHT_CNT, route_table_row_length);
-		 node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
-
-		 int nodes_cnt = row_length;
-
-		 dest_.reserve(tot_dest_nodes);
-
-		 distance_.reserve(nodes_cnt);
-	 }
-	 ~Graph(){};
-};
 
 int main()
 {
@@ -1560,17 +1583,27 @@ int main()
 		// read the input and generate switch nodes
 	cin>>tot_nodes>>tot_dest_nodes>>tot_links
 		 >>ins_time>>upd_time>>sim_duration;
-	Graph graph(tot_nodes, tot_dest_nodes);
 	con_id = tot_nodes;	//con_id == last_node_id + 1
 	node::node_generator::generate("SDN_controller", con_id);	//generate DSN_controller
+	SDN_controller *controller = dynamic_cast<SDN_controller*> (node::id_to_node(con_id));
+		//initialize controller.graph
+	vector< map<int, int> > route_table_row_length(tot_nodes);
+	controller->graph.route_table_.assign(WEIGHT_CNT, route_table_row_length);
+	controller->graph.node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
+	controller->graph.dest_.reserve(tot_dest_nodes);
+	controller->graph.distance_.reserve(tot_nodes);
+		//	cout<<controller<<'\n';
 
 	//input total destination nodes
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		cin>>destination;
-		graph.dest_[i] = destination;
+	//		puts("hi!");
+		controller->graph.dest_[i] = destination;
+	//		cout<<"dest_[i]"<<controller->graph.dest_[i]<<'\n';
 		//initialize nodes route_table
 		for(unsigned int j=0; j<tot_nodes; j++){
-			graph.route_table_[OLD][j][destination] = graph.route_table_[NEW][j][destination] = -1;
+			controller->graph.route_table_[OLD][j][destination] = controller->graph.route_table_[NEW][j][destination] = -1;
+			controller->graph.node_state_[destination][j] = -1;	//map[dest_id][node_id] = state;
 		}
 	}
 
@@ -1584,17 +1617,28 @@ int main()
 	for(unsigned int i=0; i<tot_links; i++){
 		cin>>skip>>node1>>node2>>old_w>>new_w;
 		//set my route table
-		graph.node_adj_list_[OLD][node1][node2] = old_w;
-		graph.node_adj_list_[OLD][node2][node1] = old_w;
-		graph.node_adj_list_[NEW][node1][node2] = new_w;
-		graph.node_adj_list_[NEW][node2][node1] = new_w;
+		controller->graph.node_adj_list_[OLD][node1][node2] = old_w;
+		controller->graph.node_adj_list_[OLD][node2][node1] = old_w;
+		controller->graph.node_adj_list_[NEW][node1][node2] = new_w;
+		controller->graph.node_adj_list_[NEW][node2][node1] = new_w;
 		// set switches' neighbors
 		node::id_to_node(node1)->add_phy_neighbor(node2);
 		node::id_to_node(node2)->add_phy_neighbor(node1);
 	}
 
 		//construct my route_table
-	graph.BellmanFord();
+	controller->graph.BellmanFord();
+		cout<<"1\n";
+					for(unsigned int i=0; i<tot_dest_nodes; i++){
+						cout<<"dest:"<<destination<<'\n';
+						for(unsigned int j=0; j<tot_nodes; j++){
+							destination = controller->graph.dest_[i];
+							if(destination != j){
+								cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
+							}
+						}
+						puts("");
+					}
 
 	//// dst = 0;
 	//for (unsigned int id = 0; id < node::getNodeNum(); id ++){
@@ -1615,11 +1659,23 @@ int main()
 		//construct real route_table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		for(unsigned int j=0; j<tot_nodes; j++){
-			if(graph.dest_[i] != j){
-				ctrl_packet_event(con_id, j, graph.dest_[i], graph.route_table_[OLD][j][graph.dest_[i]], ins_time);
+			destination = controller->graph.dest_[i];
+			if(destination != j){
+				ctrl_packet_event(con_id, j, destination, controller->graph.route_table_[OLD][j][destination], ins_time);
 			}
 		}
 	}
+		cout<<"2\n";
+					for(unsigned int i=0; i<tot_dest_nodes; i++){
+						cout<<"dest:"<<destination<<'\n';
+						for(unsigned int j=0; j<tot_nodes; j++){
+							destination = controller->graph.dest_[i];
+							if(destination != j){
+								cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
+							}
+						}
+						puts("");
+					}
 	//// generate all initial events that you want to simulate in the networks
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
 	//// read the input and use data_packet_event to add an initial event
@@ -1630,9 +1686,10 @@ int main()
 		//update real route table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		for(unsigned int j=0; j<tot_nodes; j++){
-			if(graph.dest_[i] != j &&
-				graph.route_table_[OLD][j][graph.dest_[i]] != graph.route_table_[NEW][j][graph.dest_[i]]){
-				msg = to_string(graph.dest_[i]) + " " + to_string(graph.route_table_[NEW][j][graph.dest_[i]]);
+			destination = controller->graph.dest_[i];
+			if(destination != j &&
+				controller->graph.route_table_[OLD][j][destination] != controller->graph.route_table_[NEW][j][destination]){
+				msg = to_string(destination) + " " + to_string(controller->graph.route_table_[NEW][j][destination]);
 				//packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
 			}
 		}
