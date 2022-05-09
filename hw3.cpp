@@ -1478,39 +1478,23 @@ void SDN_controller::recv_handler (packet *p){
 				}
 				//cout<<"======================= = = = = = = =\n";
 				if(empty_array){	//if empty
+					int next_hop;
 					packet_now[match].clear(), packet_now[match].shrink_to_fit();		//clear this round nodes and change capacity to zero
-					////cout<<"It did clear!!!!!!!!!";
-					//cout<<"packet_next[match].size()"<<packet_next[match].size();
 					packet_now[match].assign(packet_next[match].begin(), packet_next[match].end()); //copy next round to this round
 					packet_next[match].clear(), packet_next[match].shrink_to_fit();			//clera next round, for saving new next round and change capacity to zero
 					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
+						next_hop = *it;
 						//put all of it's neighbor to next round
-						node *node_now;
-						node_now = node::id_to_node(*it);
-						const map<unsigned int,bool> &nblist = node_now->getPhyNeighbors();
-						for (map<unsigned int,bool>::const_iterator it1 = nblist.begin(); it1 != nblist.end(); it1 ++) {
-							if(it1->first != getNodeID()){
-								if(node_state[match][it1->first] == 0){		//該node還沒被處理過才加
-									if(graph.route_table_[OLD][it1->first][match]==graph.route_table_[NEW][it1->first][match]){	//該node不需要被更新
-										node_state[match][it1->first] = 2;
-									}
-									else{	//需要被更新
-										node_state[match][it1->first] = 1;
-									}
-									packet_next[match].push_back(it1->first);
-									//cout<<"又有新的東西囉!\n";
-									//cout<<it1->first<<'\n';
+						for (int i=0; i<getNodeID(); i++) {
+							if(i!=match && i!=next_hop){
+								if(graph.route_table_[NEW][i][match] == next_hop){
+									packet_next[match].push_back(i);
 								}
 							}
 						}
 					}
 					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
-						if(node_state[match][*it] == 1){			//new_link = old_link, no need to update, set it to complete.
-							ctrl_packet_event(getNodeID(), *it, match, graph.route_table_[NEW][*it][match]);	//route_table_[update][node_now][dst]
-						}
-						else{	//node_state == 2
-							;//skip
-						}
+						ctrl_packet_event(getNodeID(), *it, match, graph.route_table_[NEW][*it][match]);	//route_table_[update][node_now][dst]
 					}
 				}
 			}
@@ -1522,6 +1506,9 @@ void SDN_controller::recv_handler (packet *p){
 			}
 		}
 		else{	//get from ctrl_packet_event();
+			if(l3->getMsg() != "original packet"){	//update packet
+				node_state[match][dst] ++;
+			}
 			//cout<<"======\n";
 			//cout<<"In controller, get from ctrl_event\n";
 			//cout<<"state:"<<node_state[match][dst]<<'\n';
@@ -1748,92 +1735,34 @@ int main()
 		data_packet_event(src, dst, t);
 	}
 
-		//update real route table
-	node *node_now;
-	node *node_next;
-	
-	unsigned int neighbor_id;
+	unsigned int next_hop;
+		//update real route_table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		destination = controller->graph.dest_[i];
-		node_now = node::id_to_node(destination);		//node_now = dest_node;
-		const map<unsigned int,bool> &nblist = node_now->getPhyNeighbors();	
-		for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {	//製造現在要處理的nodes
-			neighbor_id = it->first;
-			if(neighbor_id != con_id){//node != controller
-				if(controller->graph.route_table_[OLD][neighbor_id][destination]==controller->graph.route_table_[NEW][neighbor_id][destination]){			//new_link = old_link, no need to update, set it to complete.
-					//			cout<<"node_id:"<<neighbor_id<<'\n';
-					//			cout<<"dst:"<<destination<<'\n';
-					//			cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					controller->graph.node_state_[destination][neighbor_id] = 2;
-					//			cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					//			cout<<"ALL update?????????\n";
+		for(unsigned int j=0; j<tot_nodes; j++){
+			if(destination != j){
+				if(controller->graph.route_table_[NEW][j][destination] == destination){
+					controller->packet_now[destination].push_back(j);
 				}
-				else{		//have to update this node
-					//cout<<"===========\n";
-					//cout<<"node_id:"<<neighbor_id<<'\n';
-					//cout<<"dst:"<<destination<<'\n';
-					//cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					//cout<<"===========\n";
-					controller->graph.node_state_[destination][neighbor_id] = 1;	//update state to "processing now"
-				}
-				controller->packet_now[destination].push_back(neighbor_id);
 			}
 		}
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	//travese packet_now 的每個nodes, 創造下次要處理的node
-			node_next = node::id_to_node(*it);
-			const map<unsigned int,bool> &nblist1 = node_next->getPhyNeighbors();	
-			for (map<unsigned int,bool>::const_iterator it1 = nblist1.begin(); it1 != nblist1.end(); it1 ++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
-				if(it1->first != con_id){	//node != controller
-					if(controller->graph.node_state_[destination][it1->first] == 0){	//only add nodes which haven't been processed or updated
-						//cout<<"new node:"<<it1->first<<'\n';
-						if(controller->graph.route_table_[OLD][it1->first][destination]==controller->graph.route_table_[NEW][it1->first][destination]){			//new_link = old_link, no need to update, set it to complete.
-							controller->graph.node_state_[destination][it1->first] = 2;
-						}
-						else{
-							controller->graph.node_state_[destination][it1->first] = 1;	//update state to "processing now"
-						}
-						controller->packet_next[destination].push_back(it1->first);
+			next_hop = *it;
+			for (unsigned int k=0; k<tot_nodes; k++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
+				if(k!=next_hop && k!=destination){	//並非現在在檢查的node
+					if(controller->graph.route_table_[NEW][k][destination] == next_hop){	//把所有指向*it的node都加到下一round
+						controller->packet_next[destination].push_back(k);
 					}
 				}
 			}	//丟入neighbor結束=======
 		}
+		//update real route table
+	
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	//為這次要處理的node創造ctrl_packet
-			if(controller->graph.node_state_[destination][*it] == 1){		//要處理的
-					//cout<<"*it:"<<*it<<' ';
-				ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "update packet");	//ctrl(con_id, dst, mat, act, upd_time);
-					//cout<<"state:"<<controller->graph.node_state_[destination][*it]<<'\n';
-			}
-			else{	//node_state == 2;
-					//cout<<"In else->*it:"<<*it<<' ';
-					//cout<<"state:"<<controller->graph.node_state_[destination][*it]<<'\n';
-			}
+				ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "initial update packet");	//ctrl(con_id, dst, mat, act, upd_time);
 		}
 	}
-
-
-
-
-
-
-
-
-
-			//for(unsigned int j=0; j<tot_nodes; j++){
-			//	if(controller
-			//}
-
-
-		
-	//for(unsigned int i=0; i<tot_dest_nodes; i++){
-	//	for(unsigned int j=0; j<tot_nodes; j++){
-	//		destination = controller->graph.dest_[i];
-	//		if(destination != j &&
-	//			controller->graph.route_table_[OLD][j][destination] != controller->graph.route_table_[NEW][j][destination]){
-	//			msg = to_string(destination) + " " + to_string(controller->graph.route_table_[NEW][j][destination]);
-	//			//packet_events.push_back(PacketEvent(upd_time, j, msg, 0));
-	//		}
-	//	}
-	//}
+	
 
 	// start simulation!!
 	event::start_simulate(sim_duration);
