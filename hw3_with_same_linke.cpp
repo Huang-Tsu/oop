@@ -1491,15 +1491,8 @@ void SDN_controller::recv_handler (packet *p){
 						for (map<unsigned int,bool>::const_iterator it1 = nblist.begin(); it1 != nblist.end(); it1 ++) {
 							if(it1->first != getNodeID()){
 								if(node_state[match][it1->first] == 0){		//該node還沒被處理過才加
-									if(graph.route_table_[OLD][it1->first][match]==graph.route_table_[NEW][it1->first][match]){	//該node不需要被更新
-										node_state[match][it1->first] = 2;
-									}
-									else{	//需要被更新
-										node_state[match][it1->first] = 1;
-									}
+									node_state[match][it1->first] = 1;
 									packet_next[match].push_back(it1->first);
-									//cout<<"又有新的東西囉!\n";
-									//cout<<it1->first<<'\n';
 								}
 							}
 						}
@@ -1760,22 +1753,7 @@ int main()
 		for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {	//製造現在要處理的nodes
 			neighbor_id = it->first;
 			if(neighbor_id != con_id){//node != controller
-				if(controller->graph.route_table_[OLD][neighbor_id][destination]==controller->graph.route_table_[NEW][neighbor_id][destination]){			//new_link = old_link, no need to update, set it to complete.
-					//			cout<<"node_id:"<<neighbor_id<<'\n';
-					//			cout<<"dst:"<<destination<<'\n';
-					//			cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					controller->graph.node_state_[destination][neighbor_id] = 2;
-					//			cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					//			cout<<"ALL update?????????\n";
-				}
-				else{		//have to update this node
-					//cout<<"===========\n";
-					//cout<<"node_id:"<<neighbor_id<<'\n';
-					//cout<<"dst:"<<destination<<'\n';
-					//cout<<"in main, state:"<<controller->graph.node_state_[destination][neighbor_id]<<'\n';
-					//cout<<"===========\n";
-					controller->graph.node_state_[destination][neighbor_id] = 1;	//update state to "processing now"
-				}
+				controller->graph.node_state_[destination][neighbor_id] = 1;	//update state to "processing now"
 				controller->packet_now[destination].push_back(neighbor_id);
 			}
 		}
@@ -1786,12 +1764,7 @@ int main()
 				if(it1->first != con_id){	//node != controller
 					if(controller->graph.node_state_[destination][it1->first] == 0){	//only add nodes which haven't been processed or updated
 						//cout<<"new node:"<<it1->first<<'\n';
-						if(controller->graph.route_table_[OLD][it1->first][destination]==controller->graph.route_table_[NEW][it1->first][destination]){			//new_link = old_link, no need to update, set it to complete.
-							controller->graph.node_state_[destination][it1->first] = 2;
-						}
-						else{
-							controller->graph.node_state_[destination][it1->first] = 1;	//update state to "processing now"
-						}
+						controller->graph.node_state_[destination][it1->first] = 1;	//update state to "processing now"
 						controller->packet_next[destination].push_back(it1->first);
 					}
 				}
