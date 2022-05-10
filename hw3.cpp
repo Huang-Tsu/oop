@@ -573,16 +573,16 @@ SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
 //=====Class for BellmanFord=======//
 class Graph{
  public:
-	 vector< vector<map<int, int> > > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
-	 vector<int> distance_;
-	 vector< vector< map< int, int> > > route_table_;
+	 vector< vector<map<int, unsigned int> > > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
+	 vector<unsigned int> distance_;
+	 vector< vector< map< int, unsigned int> > > route_table_;
 	 vector<int> dest_;
 	 //map< int, map<int, int> > node_state_;	// map< dest_id, map<node_id, state> >
 	 void BellmanFord(){
 		 int dest_cnt = dest_.capacity();
 		 int node_cnt = distance_.capacity();
 		 int adj_node;
-		 map<int, int>::iterator iter;
+		 map<int, unsigned int>::iterator iter;
 
 		 for(int weight=0; weight<WEIGHT_CNT; weight++){
 			 for(int dest=0; dest<dest_cnt; dest++){
@@ -603,15 +603,15 @@ class Graph{
 	 void InitNodes(int destination){
 		 int len = distance_.capacity();
 		 for(int i=0; i<len; i++)
-			 distance_[i] = INT_MAX;
+			 distance_[i] = UINT_MAX;
 
 		 distance_[destination] = 0;
 	 }
 	 void Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
-		 int link_weight 					= node_adj_list_[weight_type][start][end];
-		 int next_node_of_end  		= route_table_[weight_type][end][dest];
-		 if(distance_[start] != INT_MAX){
-			int test_weight 					= distance_[start]+link_weight;
+		 if(distance_[start] != UINT_MAX){
+			 unsigned int link_weight 					= node_adj_list_[weight_type][start][end];
+			 unsigned int next_node_of_end  		= route_table_[weight_type][end][dest];
+			 unsigned int test_weight 					= distance_[start]+link_weight;
 			 if((test_weight==distance_[end] && start<next_node_of_end) ||
 					 test_weight<distance_[end]){
 				 route_table_[weight_type][end][dest] = start;
@@ -621,7 +621,7 @@ class Graph{
 	 }
 	 Graph(){}
 	 Graph(int row_length, int tot_dest_nodes){
-		 vector< map<int, int> > route_table_row_length(row_length);
+		 vector< map<int, unsigned int> > route_table_row_length(row_length);
 		 route_table_.assign(WEIGHT_CNT, route_table_row_length);
 		 node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
 
@@ -1655,7 +1655,7 @@ int main()
 	node::node_generator::generate("SDN_controller", con_id);	//generate DSN_controller
 	SDN_controller *controller = dynamic_cast<SDN_controller*> (node::id_to_node(con_id));
 		//initialize controller.graph
-	vector< map<int, int> > route_table_row_length(tot_nodes);
+	vector< map<int, unsigned int> > route_table_row_length(tot_nodes);
 	controller->graph.route_table_.assign(WEIGHT_CNT, route_table_row_length);
 	controller->graph.node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
 	controller->graph.dest_.reserve(tot_dest_nodes);
