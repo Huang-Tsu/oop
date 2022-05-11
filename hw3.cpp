@@ -577,6 +577,7 @@ class Graph{
 	 vector<unsigned int> distance_;
 	 vector< vector< map< int, unsigned int> > > route_table_;
 	 vector<int> dest_;
+	 map<unsigned int, map<unsigned int, vector<unsigned int> > >	pre_nodes;//map<dest, map<node_id, vector<pre_nodes_id> > > >
 	 //map< int, map<int, int> > node_state_;	// map< dest_id, map<node_id, state> >
 	 void BellmanFord(){
 		 int dest_cnt = dest_.capacity();
@@ -599,6 +600,29 @@ class Graph{
 
 			 }
 		 }
+		 int next_hop;
+		 int destination;
+		 for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes, for every dests.
+			 destination = dest_[dest];
+			 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node	//for every nodes
+				 if(node != destination){
+					 next_hop = route_table_[NEW][node][destination]; 	//set the next_hop node's previoud = node_now
+					 pre_nodes[destination][next_hop].push_back(node);	//pre_nodes[dest][node_id]:pre_nodes	
+				 }
+			 }
+		 }
+		 				//print previous node
+					//		for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes
+					//			destination = dest_[dest];
+					//			cout<<"dest:"<<destination<<'\n';
+					//			for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
+					//				cout<<"\tnode:"<<node<<'\n';
+					//				for(vector<unsigned int>::iterator iter= pre_nodes[destination][node].begin(); iter!=pre_nodes[destination][node].end(); iter++){
+					//					cout<<"\t\t"<<*iter<<' ';
+					//				}
+					//				cout<<'\n';
+					//			}
+					//		}
 	 }
 	 void InitNodes(int destination){
 		 int len = distance_.capacity();
@@ -648,7 +672,7 @@ class SDN_controller: public node {
 	Graph graph;
 	map<unsigned int, vector<unsigned int> > packet_now;	//map<dests, vector<nodes_id> >
 	map<unsigned int, vector<unsigned int> > packet_next;
-	int packet_alive_cnt;
+	map<unsigned int, unsigned int> packet_alive_cnt;	//map<dest_id, alive_cnt;
 	~SDN_controller(){}
 	string type() { return "SDN_controller"; }
 
@@ -1453,36 +1477,26 @@ void SDN_controller::recv_handler (packet *p){
 		SDN_ctrl_packet *p3 = dynamic_cast<SDN_ctrl_packet*> (p);
 		SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
 		SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
-		int empty_array = 1;
 		unsigned int match = l3->getMatID();
-		unsigned int dst = h3->getDstID();
 		//map< int, map<int, int> > &node_state = graph.node_state_;	// map< dest_id, map<node_id, state> >
 
-		if(h3->getDstID() == getNodeID()){	//ack packet (send from nodes)
-			unsigned int src = h3->getSrcID();
-				packet_alive_cnt --;
-				if(packet_alive_cnt == 0){	//is empty
+		if(h3->getDstID() == getNodeID()){	//ack packet (get from nodes)
+			unsigned int src = h3->getSrcID();	//src = sending node's id
+				packet_alive_cnt[match] --;
+				if(packet_alive_cnt[match] == 0){	//is empty
 					int next_hop;
 					int id_now;
 					node *node_ptr;
 					packet_now[match].clear(), packet_now[match].shrink_to_fit();		//clear this round nodes and change capacity to zero
 					packet_now[match].assign(packet_next[match].begin(), packet_next[match].end()); //copy next round to this round
-					packet_alive_cnt = packet_now[match].size();	//update new packet_alive_cnt;
+					packet_alive_cnt[match] = packet_now[match].size();	//update new packet_alive_cnt;
 					packet_next[match].clear(), packet_next[match].shrink_to_fit();			//clera next round, for saving new next round and change capacity to zero
-					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){	//construst nodes next round
-						next_hop = *it;		//node being checked now
-						node_ptr = node::id_to_node(next_hop);	//get checked node's ptr		//for getPhyNeighbors()
-						const map<unsigned int,bool> &nblist = node_ptr->getPhyNeighbors();	//get checked node's neighbors
-						for (map<unsigned int,bool>::const_iterator map_it = nblist.begin(); map_it != nblist.end(); map_it ++) {	//traverse all the node's neighbors
-							id_now = map_it->first;		//id_now = neightbor now
-							//for(unsigned int j=0; j<tot_nodes; j++){
-							if(id_now!=getNodeID() && id_now!=match){	//not controller and not match
-								if(graph.route_table_[NEW][id_now][match] == next_hop){
-									packet_next[match].push_back(id_now);
-								}
-							}
-							//}
-						}
+						//traverse nodes of this round, construct next round's nodes
+					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){	
+											//add all the previous nodes of this node to next round
+									for(vector<unsigned int>::iterator iter= graph.pre_nodes[match][*it].begin(); iter!=graph.pre_nodes[match][*it].end(); iter++){
+															packet_next[match].push_back(*iter);
+									}
 						//for (unsigned int k=0; k<tot_nodes; k++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
 					}	//丟入neighbor結束=======
 					//for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
@@ -1662,9 +1676,10 @@ int main()
 	controller->graph.distance_.reserve(tot_nodes);
 		//	cout<<controller<<'\n';
 
-	//input total destination nodes
+		//input total destination nodes
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		cin>>destination;
+		controller->packet_alive_cnt[destination] = 0;	//initialize packet_alive_cnt of destination
 	//		puts("hi!");
 		controller->graph.dest_[i] = destination;
 	//		cout<<"dest_[i]"<<controller->graph.dest_[i]<<'\n';
@@ -1741,47 +1756,26 @@ int main()
 		data_packet_event(src, dst, t);
 	}
 
-	controller->packet_alive_cnt = 0;
 		//update real route_table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		destination = controller->graph.dest_[i];
-			//update 現在要處理的packet
-		node_ptr = node::id_to_node(destination);	//get destination node's ptr
-		const map<unsigned int,bool> &nblist = node_ptr->getPhyNeighbors();	//get destination's neighbor
-		for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {	//traverse destination's all neighbors, check whether it's next_hop is destination
-			id_now = it->first;		//neighbor now
-		//for(unsigned int j=0; j<tot_nodes; j++){
-				if(id_now != con_id){	//not controller
-					if(controller->graph.route_table_[NEW][id_now][destination] == destination){
-						controller->packet_now[destination].push_back(id_now);
-						controller->packet_alive_cnt ++;
-					}
-				}
-		//}
+			//add destination node's all previous nodes to this round
+		for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][destination].begin(); iter!=controller->graph.pre_nodes[destination][destination].end(); iter++){	
+			controller->packet_now[destination].push_back(*iter);	//add pre_node_now to this round
+			controller->packet_alive_cnt[destination] ++;		//update packet_alive_cnt of this round
 		}
 			//update 下次要處理的packet, traverse all the node in this round
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	
-
-			next_hop = *it;		//node being checked now
-			node_ptr = node::id_to_node(next_hop);	//get checked node's ptr
-			const map<unsigned int,bool> &nblist = node_ptr->getPhyNeighbors();	//get checked node's neighbors
-			for (map<unsigned int,bool>::const_iterator map_it = nblist.begin(); map_it != nblist.end(); map_it ++) {	//traverse all the node's neighbors
-				id_now = map_it->first;		//id_now = neightbor now
-				//for(unsigned int j=0; j<tot_nodes; j++){
-				if(id_now!=con_id && id_now!=destination){	//not controller and not destination
-					if(controller->graph.route_table_[NEW][id_now][destination] == next_hop){
-						controller->packet_next[destination].push_back(id_now);
-					}
-				}
-				//}
+				//add this node's all previous nodes to this next round
+			for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][*it].begin(); iter!=controller->graph.pre_nodes[destination][*it].end(); iter++){	
+				controller->packet_next[destination].push_back(*iter);
 			}
-			//for (unsigned int k=0; k<tot_nodes; k++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
 		}	//丟入neighbor結束=======
 		//update real route table
-
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	//為這次要處理的node創造ctrl_packet
-				ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "update packet");	//ctrl(con_id, dst, mat, act, upd_time);
+			ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "update packet");	//ctrl(con_id, dst, mat, act, upd_time);
 		}
+
 	}
 	
 
