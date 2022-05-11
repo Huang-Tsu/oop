@@ -1175,8 +1175,7 @@ void SDN_switch::recv_handler (packet *p){
 
 	if (p->type() == "SDN_data_packet") { // the switch receives a packet from the other switch
 		// cout << "node " << getNodeID() << " send the packet" << endl;
-		SDN_data_packet *p2 = nullptr;
-		p2 = dynamic_cast<SDN_data_packet*> (p);
+		SDN_data_packet *p2 = dynamic_cast<SDN_data_packet*> (p);
 		unsigned int dst = p2->getHeader()->getDstID();
 
 		if(getNodeID() == dst) 	//this node is the destination
@@ -1185,7 +1184,7 @@ void SDN_switch::recv_handler (packet *p){
 			return;
 		p2->getHeader()->setPreID ( getNodeID() );
 		p2->getHeader()->setNexID ( one_hop_neighbors[dst] );
-		p2->getHeader()->setDstID ( p2->getHeader()->getDstID() );
+		//p2->getHeader()->setDstID ( p2->getHeader()->getDstID() );
 		hi = true;
 		send_handler (p2);
 	}
@@ -1287,9 +1286,9 @@ class Graph{
 		}
 		void Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
 			int link_weight 					= node_adj_list_[weight_type][start][end];
-			int test_weight 					= distance_[start]+link_weight;
 			int next_node_of_end  		= route_table_[weight_type][end][dest];
 			if(distance_[start] != INT_MAX){
+				int test_weight 					= distance_[start]+link_weight;
 				if((test_weight==distance_[end] && start<next_node_of_end) ||
 						test_weight<distance_[end]){
 					route_table_[weight_type][end][dest] = start;

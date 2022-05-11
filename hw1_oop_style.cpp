@@ -89,7 +89,7 @@ int main(){
 }
 void Graph::BellmanFord(){
 	int dest_cnt = dest_.capacity();
-	int node_cnt = distance_.capacity();
+	unsigned int node_cnt = distance_.capacity();
 	int adj_node;
 	map<int, int>::iterator iter;
 
@@ -111,10 +111,10 @@ void Graph::BellmanFord(){
 	}
 }
 void Graph::Relax(int start, int end, int dest, int weight_type){		//start:start point(node) of a link, end:end point(node) of a link
-	int link_weight 					= node_adj_list_[weight_type][start][end];
-	int test_weight 					= distance_[start]+link_weight;
-	int next_node_of_end  		= route_table_[weight_type][end][dest];
-	if(distance_[start] != INT_MAX){
+	if(distance_[start] != (1<<32)-1){
+	unsigned int link_weight 					= node_adj_list_[weight_type][start][end];
+	unsigned int test_weight 					= distance_[start]+link_weight;
+	unsigned int next_node_of_end  		= route_table_[weight_type][end][dest];
 		if((test_weight==distance_[end] && start<next_node_of_end) ||
 				test_weight<distance_[end]){
 			route_table_[weight_type][end][dest] = start;
@@ -125,7 +125,7 @@ void Graph::Relax(int start, int end, int dest, int weight_type){		//start:start
 void Graph::InitNodes(int destination){
 	int len = distance_.capacity();
 	for(int i=0; i<len; i++)
-		distance_[i] = INT_MAX;
+		distance_[i] = (1<<32)-1;
 
 	distance_[destination] = 0;
 }
