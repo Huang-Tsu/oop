@@ -1464,12 +1464,6 @@ void node::send(packet *p){ // this function is called by event; not for the use
 	packet::discard(p);
 }
 void SDN_controller::recv_handler (packet *p){
-	// in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
-
-	// this is a simple example
-	// node 0 broadcasts its message to every node and every node relays the packet "only once"
-	// the variable hi is used to examine whether the packet has been received before
-	// you can remove the variable hi and create your own variables in class SDN_switch
 	if(p == nullptr) 
 		return;
 
@@ -1478,80 +1472,43 @@ void SDN_controller::recv_handler (packet *p){
 		SDN_ctrl_payload *l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
 		SDN_ctrl_header *h3 = dynamic_cast<SDN_ctrl_header*> (p3->getHeader());
 		unsigned int match = l3->getMatID();
-		//map< int, map<int, int> > &node_state = graph.node_state_;	// map< dest_id, map<node_id, state> >
-
-		if(h3->getDstID() == getNodeID()){	//ack packet (get from nodes)
-			unsigned int src = h3->getSrcID();	//src = sending node's id
-				packet_alive_cnt[match] --;
-				if(packet_alive_cnt[match] == 0){	//is empty
-					int next_hop;
-					int id_now;
-					node *node_ptr;
+			//ack packet (get from nodes)
+		if(h3->getDstID() == getNodeID()){	
+				packet_alive_cnt[match] --;	//get ack, alive packets of destination "match" -1;
+					//check whether this round finished(no packets alive)
+				if(packet_alive_cnt[match] == 0){	
+						//***steps***
+						//1. clear this round
+						//2. move next round to this round
+						//3. prepare next round's nodes
+						//4. generate this round's packets
 					packet_now[match].clear(), packet_now[match].shrink_to_fit();		//clear this round nodes and change capacity to zero
 					packet_now[match].assign(packet_next[match].begin(), packet_next[match].end()); //copy next round to this round
 					packet_alive_cnt[match] = packet_now[match].size();	//update new packet_alive_cnt;
-					packet_next[match].clear(), packet_next[match].shrink_to_fit();			//clera next round, for saving new next round and change capacity to zero
+					packet_next[match].clear(), packet_next[match].shrink_to_fit();			//clear next round, for saving new next round and change capacity to zero
 						//traverse nodes of this round, construct next round's nodes
 					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){	
 											//add all the previous nodes of this node to next round
 									for(vector<unsigned int>::iterator iter= graph.pre_nodes[match][*it].begin(); iter!=graph.pre_nodes[match][*it].end(); iter++){
 															packet_next[match].push_back(*iter);
 									}
-						//for (unsigned int k=0; k<tot_nodes; k++) {	//將neighbot_id之neightbor 全部放入下一round要處理的陣列
-					}	//丟入neighbor結束=======
-					//for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
-					//	next_hop = *it;
-					//	//put all of it's neighbor to next round
-					//	for (unsigned int i=0; i<getNodeID(); i++) {
-					//		if(i!=match && i!=next_hop){
-					//			if(graph.route_table_[NEW][i][match] == next_hop){
-					//				packet_next[match].push_back(i);
-					//			}
-					//		}
-					//	}
-					//}
-					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){//construct this round
+					}	
+						//generate packets of this round
+					for(vector<unsigned int>::iterator it=packet_now[match].begin(); it!=packet_now[match].end(); it++){
 						ctrl_packet_event(getNodeID(), *it, match, graph.route_table_[NEW][*it][match], event::getCurTime(), "update packet");	//route_table_[update][node_now][dst]
 					}
 				}
-			//}
-			//else{
-			//	cout<<"In SDN_controller::recv_handler:oh no!, this condiction should not happen.\n";
-			//	cout<<"src:"<<src<<'\n';
-			//	cout<<"state:"<<node_state[match][src]<<'\n';
-			//	cout<<"msg:"<<l3->getMsg()<<'\n';
-			//	exit(1);
-			//}
 		}
 		else{	//get from ctrl_packet_event();
-			//if(l3->getMsg() != "original packet"){	//update packet
-			//	node_state[match][dst] ++;
-			//}
-			//cout<<"======\n";
-			//cout<<"In controller, get from ctrl_event\n";
-			//cout<<"state:"<<node_state[match][dst]<<'\n';
-			//cout<<"dst:"<<match<<", "<<"node:"<<dst<<'\n';
-			//cout<<"msg"<<l3->getMsg()<<'\n';
-
-			//cout<<"======\n";
 			h3->setPreID(getNodeID());
 			h3->setNexID(h3->getDstID());
 			send_handler(p3);
 		}
 	}
 	else{
-		//cout<<"不是吧，真的有其他的packet???????????\n";
+		return;
 	}
 }
-//		
-//		one_hop_neighbors[dst] = next;
-//		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
-//	}
-	// you can use p->getHeader()->setSrcID() or getSrcID()
-	//             p->getHeader()->setDstID() or getDstID()
-	//             p->getHeader()->setPreID() or getPreID()
-	//             p->getHeader()->setNexID() or getNexID() to change or read the packet header
-// you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
 	// in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
 
@@ -1597,51 +1554,8 @@ void SDN_switch::recv_handler (packet *p){
 			h3->setNexID(src_origin);
 			send_handler(p3);
 		}
-		// cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
 	}
 
-	// you should implement the SDN's distributed algorithm in recv_handler
-	// getNodeID() returns the id of the current node
-
-	// The current node's neighbors are already stored in the following variable 
-	// map<unsigned int,bool> node::phy_neighbors
-	// however, this variable is private in the class node
-	// You have to use node::getPhyNeighbors to get the variable
-	// for example, if you want to print all the neighbors of this node
-	// const map<unsigned int,bool> &nblist = getPhyNeighbors();
-	// cout << "node " << getNodeID() << "'s nblist: ";
-	// for (map<unsigned int,bool>::const_iterator it = nblist.begin(); it != nblist.end(); it ++) {
-	//     cout << it->first << ", " ;
-	// }
-	// cout << endl;
-
-
-	// you can use p->getHeader()->setSrcID() or getSrcID()
-	//             p->getHeader()->setDstID() or getDstID()
-	//             p->getHeader()->setPreID() or getPreID()
-	//             p->getHeader()->setNexID() or getNexID() to change or read the packet header
-
-	// In addition, you can get the packet, header, and payload with the correct type (GR)
-	// in fact, this is downcasting
-	// SDN_data_packet * pkt = dynamic_cast<SDN_data_packet*> (p);
-	// SDN_data_header * hdr = dynamic_cast<SDN_data_header*> (p->getHeader());
-	// SDN_data_payload * pld = dynamic_cast<SDN_data_payload*> (p->getPayload());
-
-	// you can also change the SDN_data_payload setting
-	// pld->setMsg(string): to set the message transmitted to the destination
-
-	// Besides, you can use packet::packet_generator::generate() to generate a new packet; note that you should fill the header and payload in the packet
-	// moreover, you can use "packet *p2 = packet::packet_generator::replicate(p)" to make a clone p2 of packet p
-	// note that if the packet is generated or replicated manually, you must delete it by packet::discard() manually before recv_handler finishes
-
-	// "IMPORTANT":
-	// You have to "carefully" fill the correct information (e.g., srcID, dstID, ...) in the packet before you send it
-	// Note that if you want to transmit a packet to only one next node (i.e., unicast), then you fill the ID of a specific node to "nexID" in the header
-	// Otherwise, i.e., you want to broadcasts, then you fill "BROCAST_ID" to "nexID" in the header
-	// after that, you can use send() to transmit the packet 
-	// usage: send_handler (p);
-
-	// note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
 
 
@@ -1658,9 +1572,6 @@ int main()
 	unsigned int ins_time, upd_time, sim_duration;
 	string msg;
 	unsigned int con_id;
-	unsigned int next_hop;
-	unsigned int  id_now;
-	node *node_ptr;
 
 		// read the input and generate switch nodes
 	cin>>tot_nodes>>tot_dest_nodes>>tot_links
@@ -1674,20 +1585,15 @@ int main()
 	controller->graph.node_adj_list_.assign(WEIGHT_CNT, route_table_row_length);
 	controller->graph.dest_.reserve(tot_dest_nodes);
 	controller->graph.distance_.reserve(tot_nodes);
-		//	cout<<controller<<'\n';
 
 		//input total destination nodes
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		cin>>destination;
 		controller->packet_alive_cnt[destination] = 0;	//initialize packet_alive_cnt of destination
-	//		puts("hi!");
 		controller->graph.dest_[i] = destination;
-	//		cout<<"dest_[i]"<<controller->graph.dest_[i]<<'\n';
 		//initialize nodes route_table
 		for(unsigned int j=0; j<tot_nodes; j++){
 			controller->graph.route_table_[OLD][j][destination] = controller->graph.route_table_[NEW][j][destination] = -1;
-			//controller->graph.node_state_[destination][j] = 0;	//map[dest_id][node_id] = state;
-			//controller->graph.node_state_[destination][destination] = 2;	//destination don't have to be updated
 		}
 	}
 
@@ -1712,34 +1618,7 @@ int main()
 
 		//construct my route_table
 	controller->graph.BellmanFord();
-		//cout<<"1\n";
-		//			for(unsigned int i=0; i<tot_dest_nodes; i++){
-		//				cout<<"dest:"<<destination<<'\n';
-		//				for(unsigned int j=0; j<tot_nodes; j++){
-		//					destination = controller->graph.dest_[i];
-		//					if(destination != j){
-		//						cout<<'\t'<<controller->graph.node_state_[destination][j]<<' ';
-		//					}
-		//				}
-		//				puts("");
-		//			}
 
-	//// dst = 0;
-	//for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-	//	// for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-	//	ctrl_packet_event(con_id, id, id, id+1, 100);
-	// note that we don't need to use msg for network update anymore in hw3
-	// thus, function ctrl_packet_event is updated as follows:
-	// 1st paremeter: controller_id
-	// 2st parameter: the node that has to update the rule
-	// 3nd parameter: the target node of the rule (i.e., match ID)
-	// 4rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID)
-	// 5th parameter: time (optional)
-	// 6th parameter: msg for debug (optional)
-
-	// !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
-	// !!!! to generate the new ctrl msg in the next round
-	//}
 		//construct real route_table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		for(unsigned int j=0; j<tot_nodes; j++){
@@ -1749,9 +1628,7 @@ int main()
 			}
 		}
 	}
-	//// generate all initial events that you want to simulate in the networks
 	unsigned int t = 0, src = 0, dst = BROCAST_ID;
-	//// read the input and use data_packet_event to add an initial event
 	while(cin>>t>>src>>dst){
 		data_packet_event(src, dst, t);
 	}
@@ -1759,18 +1636,18 @@ int main()
 		//update real route_table
 	for(unsigned int i=0; i<tot_dest_nodes; i++){
 		destination = controller->graph.dest_[i];
-			//add destination node's all previous nodes to this round
+			//prepare initial ctrl packets: add destination node's all previous nodes to this round
 		for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][destination].begin(); iter!=controller->graph.pre_nodes[destination][destination].end(); iter++){	
 			controller->packet_now[destination].push_back(*iter);	//add pre_node_now to this round
-			controller->packet_alive_cnt[destination] ++;		//update packet_alive_cnt of this round
 		}
-			//update 下次要處理的packet, traverse all the node in this round
+		controller->packet_alive_cnt[destination] = controller->packet_now[destination].size();		//get packet_alive_cnt of this round
+			//prepare next round's packets: traverse all the node in this round
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	
-				//add this node's all previous nodes to this next round
+				//add this node's all previous nodes to next round
 			for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][*it].begin(); iter!=controller->graph.pre_nodes[destination][*it].end(); iter++){	
 				controller->packet_next[destination].push_back(*iter);
 			}
-		}	//丟入neighbor結束=======
+		}
 		//update real route table
 		for(vector<unsigned int>::iterator it=controller->packet_now[destination].begin(); it!=controller->packet_now[destination].end(); it++){	//為這次要處理的node創造ctrl_packet
 			ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "update packet");	//ctrl(con_id, dst, mat, act, upd_time);
