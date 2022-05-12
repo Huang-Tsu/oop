@@ -579,51 +579,7 @@ class Graph{
 	 vector<int> dest_;
 	 map<unsigned int, map<unsigned int, vector<unsigned int> > >	pre_nodes;//map<dest, map<node_id, vector<pre_nodes_id> > > >
 	 //map< int, map<int, int> > node_state_;	// map< dest_id, map<node_id, state> >
-	 void BellmanFord(){
-		 int dest_cnt = dest_.capacity();
-		 int node_cnt = distance_.capacity();
-		 int adj_node;
-		 map<int, unsigned int>::iterator iter;
-
-		 for(int weight=0; weight<WEIGHT_CNT; weight++){
-			 for(int dest=0; dest<dest_cnt; dest++){
-				 this->InitNodes(dest_[dest]);	
-
-				 for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
-					 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
-						 for(iter=node_adj_list_[weight][node].begin(); iter!=node_adj_list_[weight][node].end(); iter++){	//對第j node之所有link relax
-							 adj_node = iter->first;
-							 this->Relax(node, adj_node, dest_[dest], weight);
-						 }
-					 }
-				 }
-
-			 }
-		 }
-		 int next_hop;
-		 int destination;
-		 for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes, for every dests.
-			 destination = dest_[dest];
-			 for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node	//for every nodes
-				 if(node != destination){
-					 next_hop = route_table_[NEW][node][destination]; 	//set the next_hop node's previoud = node_now
-					 pre_nodes[destination][next_hop].push_back(node);	//pre_nodes[dest][node_id]:pre_nodes	
-				 }
-			 }
-		 }
-		 				//print previous node
-					//		for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes
-					//			destination = dest_[dest];
-					//			cout<<"dest:"<<destination<<'\n';
-					//			for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
-					//				cout<<"\tnode:"<<node<<'\n';
-					//				for(vector<unsigned int>::iterator iter= pre_nodes[destination][node].begin(); iter!=pre_nodes[destination][node].end(); iter++){
-					//					cout<<"\t\t"<<*iter<<' ';
-					//				}
-					//				cout<<'\n';
-					//			}
-					//		}
-	 }
+	 void BellmanFord();
 	 void InitNodes(int destination){
 		 int len = distance_.capacity();
 		 for(int i=0; i<len; i++)
@@ -657,6 +613,51 @@ class Graph{
 	 }
 	 ~Graph(){};
 };
+void Graph::BellmanFord(){
+	int dest_cnt = dest_.capacity();
+	int node_cnt = distance_.capacity();
+	int adj_node;
+	map<int, unsigned int>::iterator iter;
+
+	for(int weight=0; weight<WEIGHT_CNT; weight++){
+		for(int dest=0; dest<dest_cnt; dest++){
+			this->InitNodes(dest_[dest]);	
+
+			for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
+				for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
+					for(iter=node_adj_list_[weight][node].begin(); iter!=node_adj_list_[weight][node].end(); iter++){	//對第j node之所有link relax
+						adj_node = iter->first;
+						this->Relax(node, adj_node, dest_[dest], weight);
+					}
+				}
+			}
+
+		}
+	}
+	int next_hop;
+	int destination;
+	for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes, for every dests.
+		destination = dest_[dest];
+		for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node	//for every nodes
+			if(node != destination){
+				next_hop = route_table_[NEW][node][destination]; 	//set the next_hop node's previoud = node_now
+				pre_nodes[destination][next_hop].push_back(node);	//pre_nodes[dest][node_id]:pre_nodes	
+			}
+		}
+	}
+	//print previous node
+	//		for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes
+	//			destination = dest_[dest];
+	//			cout<<"dest:"<<destination<<'\n';
+	//			for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
+	//				cout<<"\tnode:"<<node<<'\n';
+	//				for(vector<unsigned int>::iterator iter= pre_nodes[destination][node].begin(); iter!=pre_nodes[destination][node].end(); iter++){
+	//					cout<<"\t\t"<<*iter<<' ';
+	//				}
+	//				cout<<'\n';
+	//			}
+	//		}
+}
 //==============new part in hw3==========
 class SDN_controller: public node {
 	//map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
