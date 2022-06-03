@@ -719,9 +719,6 @@ void Graph::BellmanFord(){
 
   for(int dest=0; dest<dest_cnt; dest++){
     this->InitNodes(dest_[dest]);	
-    for(unsigned int j=0; j<node_cnt; j++){
-      route_table_[j][dest_[dest]] = -1;
-    }
 
     for(int k=0; k<node_cnt-1; k++){	//run at most n-1 times, because each time will find at least one more shortest path's link.
       for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
