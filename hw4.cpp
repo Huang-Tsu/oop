@@ -675,12 +675,11 @@ SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
 //=====Class for BellmanFord=======//
 class Graph{
  public:
-   vector<map<int, unsigned int> > node_adj_list_;	//weight_type<node_id<adj_node_id, adj_node_weight> >
+   vector<map<int, unsigned int> > node_adj_list_;	// node_id<map<adj_node, adj_node_weight> >
    vector<unsigned int> distance_;
-   vector<map< int, unsigned int> > route_table_;
+   vector<map< int, unsigned int> > route_table_;   //node_id<map<destination, next_hop> > 
    vector<int> dest_;
-   map<unsigned int, map<unsigned int, vector<unsigned int> > >	pre_nodes;//map<dest, map<node_id, vector<pre_nodes_id> > > >
-   //map< int, map<int, int> > node_state_;	// map< dest_id, map<node_id, state> >
+   map<unsigned int, vector<vector<unsigned int> > >	pre_nodes;//map<dest, vector<node_id<vector<pre_node_id> > >
    void BellmanFord();
    void InitNodes(int destination){
      int len = distance_.capacity();
@@ -730,12 +729,12 @@ void Graph::BellmanFord(){
     }
 
   }
-  if(g_bell_cnt == 1){
+  if(g_bell_cnt == 1){  //doin this only when updating route table
     int next_hop;
     int destination;
     for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes, for every dests.
       destination = dest_[dest];
-      for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node	//for every nodes
+      for(int node=0; node<node_cnt; node++){	//traverse all route table
         if(node != destination){
           next_hop = route_table_[node][destination]; 	//set the next_hop node's previoud = node_now
           pre_nodes[destination][next_hop].push_back(node);	//pre_nodes[dest][node_id]:pre_nodes	
@@ -744,18 +743,6 @@ void Graph::BellmanFord(){
     }
   }
   g_bell_cnt ++;
-  //print previous node
-  //		for(int dest=0; dest<dest_cnt; dest++){	//set pre_nodes
-  //			destination = dest_[dest];
-  //			cout<<"dest:"<<destination<<'\n';
-  //			for(int node=0; node<node_cnt; node++){	//each time, relax() every adjacent_node of every node
-  //				cout<<"\tnode:"<<node<<'\n';
-  //				for(vector<unsigned int>::iterator iter= pre_nodes[destination][node].begin(); iter!=pre_nodes[destination][node].end(); iter++){
-  //					cout<<"\t\t"<<*iter<<' ';
-  //				}
-  //				cout<<'\n';
-  //			}
-  //		}
 }
 //==============new part in hw3==========
 class SDN_controller: public node {
@@ -1740,18 +1727,14 @@ void SDN_controller::recv_handler (packet *p){
     for(map<int, int>::iterator iter=node_info.begin(); iter!=node_info.end(); iter++){
       graph.node_adj_list_[src][iter->first] = iter->second;
     }
-      //controller->graph.node_adj_list_[OLD][node1][node2] = old_w;
-      //controller->graph.node_adj_list_[OLD][node2][node1] = old_w;
-      //controller->graph.node_adj_list_[NEW][node1][node2] = new_w;
-      //controller->graph.node_adj_list_[NEW][node2][node1] = new_w;
-    if(stat_packet_now == 0){   //weight ins or update finish, start transmit ctrl_packet
+    if(stat_packet_now == 0){   //ins or update weight finish, start transmit ctrl_packet
       int tot_nodes = graph.distance_.capacity();
       int tot_dest_nodes = graph.dest_.capacity();
       int destination;
 
       graph.BellmanFord();
 
-      if(l3->getMsg() == "old"){  //finish install weight
+      if(l3->getMsg() == "old"){  //finish ***install*** weight
         stat_packet_now = tot_nodes;    //reset stat_packet_now for next round.
         //construct real route_table
         for(unsigned int i=0; i<tot_dest_nodes; i++){
@@ -1763,9 +1746,9 @@ void SDN_controller::recv_handler (packet *p){
           }
         }
       }
-      else if(l3->getMsg() == "new"){ //finish update weight
+      else if(l3->getMsg() == "new"){ //finish ***update*** weight
         vector<unsigned int> expand;
-        //update real route_table
+        //manage packet for each round
         for(unsigned int i=0; i<tot_dest_nodes; i++){
           destination = graph.dest_[i];
           round_number[destination] = 0;  //initialize round number
@@ -1882,6 +1865,7 @@ int main()
 
   //allocate controller.graph
   map<int, unsigned int> temp;
+  vector<vector<unsigned int> > temp_for_declare_2(tot_nodes);
   controller->graph.route_table_.assign(tot_nodes, temp);
   controller->graph.node_adj_list_.assign(tot_nodes, temp);
   controller->graph.dest_.reserve(tot_dest_nodes);
@@ -1892,10 +1876,7 @@ int main()
     cin>>destination;
     controller->packet_alive_cnt[destination] = 0;	//initialize packet_alive_cnt of destination
     controller->graph.dest_[i] = destination;
-    //initialize nodes route_table
-    //for(unsigned int j=0; j<tot_nodes; j++){
-      //controller->graph.route_table_[OLD][j][destination] = controller->graph.route_table_[NEW][j][destination] = -1;
-    //}
+    controller->graph.pre_nodes[destination] = temp_for_declare_2;
   }
 
   for (unsigned int id = 0; id < tot_nodes; id ++){
@@ -1907,15 +1888,11 @@ int main()
 
   for(unsigned int i=0; i<tot_links; i++){
     cin>>skip>>node1>>node2>>old_w>>new_w;
-    //stat_packet_event(node1, con_id, node2, old_w, ins_time, "old"); 
-    //stat_packet_event(node2, con_id, node1, old_w, ins_time, "old"); 
-    //stat_packet_event(node1, con_id, node2, new_w, upd_time, "new"); 
-    //stat_packet_event(node2, con_id, node1, new_w, upd_time, "new"); 
-      //set my route table
-      temp_weight[OLD][node1][node2] = old_w;
-      temp_weight[OLD][node2][node1] = old_w;
-      temp_weight[NEW][node1][node2] = new_w;
-      temp_weight[NEW][node2][node1] = new_w;
+    //set my route table
+    temp_weight[OLD][node1][node2] = old_w;
+    temp_weight[OLD][node2][node1] = old_w;
+    temp_weight[NEW][node1][node2] = new_w;
+    temp_weight[NEW][node2][node1] = new_w;
       // set switches' neighbors
     node::id_to_node(node1)->add_phy_neighbor(node2);
     node::id_to_node(node2)->add_phy_neighbor(node1);
@@ -1926,51 +1903,10 @@ int main()
     stat_packet_event(i, con_id, temp_weight[NEW][i], upd_time, "new"); 
   }
 
-  //construct my route_table
-  //controller->graph.BellmanFord();
-
-  //construct real route_table
-  //for(unsigned int i=0; i<tot_dest_nodes; i++){
-  //  for(unsigned int j=0; j<tot_nodes; j++){
-  //    destination = controller->graph.dest_[i];
-  //    if(destination != j){
-  //      ctrl_packet_event(con_id, j, destination, controller->graph.route_table_[OLD][j][destination], ins_time, "original packet");
-  //    }
-  //  }
-  //}
   unsigned int t = 0, src = 0, dst = BROCAST_ID;
   while(cin>>t>>src>>dst){
     data_packet_event(src, dst, t);
   }
-
- // vector<unsigned int> expand;
- // //update real route_table
- // for(unsigned int i=0; i<tot_dest_nodes; i++){
- //   destination = controller->graph.dest_[i];
- //   controller->round_number[destination] = 0;  //initialize round number
- //   controller->round_packet[destination].push_back(expand);
- //   //prepare initial ctrl packets: add destination node's all previous nodes to this round
- //   for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][destination].begin(); iter!=controller->graph.pre_nodes[destination][destination].end(); iter++){	
- //     controller->round_packet[destination][0].push_back(*iter);	//add pre_node_now to this round
- //   }
- //   controller->packet_alive_cnt[destination] = controller->round_packet[destination][0].size();		//get packet_alive_cnt of first round
- //   //prepare round i's packets: traverse all the node in round i-1
- //   for(int i=1; controller->round_packet[destination][i-1].size()>0; i++){
- //     controller->round_packet[destination].push_back(expand);  //expand one more vector<unsigned int>
- //     for(vector<unsigned int>::iterator it=controller->round_packet[destination][i-1].begin(); it!=controller->round_packet[destination][i-1].end(); it++){	
- //       //add this node's all previous nodes to next round
- //       for(vector<unsigned int>::iterator iter= controller->graph.pre_nodes[destination][*it].begin(); iter!=controller->graph.pre_nodes[destination][*it].end(); iter++){	
- //         controller->round_packet[destination][i].push_back(*iter);
- //       }
- //     }
- //   }
- //   //update real route table (send initial ctrl_packet);
- //   for(vector<unsigned int>::iterator it=controller->round_packet[destination][0].begin(); it!=controller->round_packet[destination][0].end(); it++){	//為這次要處理的node創造ctrl_packet
- //     ctrl_packet_event(con_id, *it, destination, controller->graph.route_table_[NEW][*it][destination], upd_time, "update packet");	//ctrl(con_id, dst, mat, act, upd_time);
- //   }
-
- // }
-
 
   // start simulation!!
   event::start_simulate(sim_duration);
