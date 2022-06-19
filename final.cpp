@@ -544,7 +544,7 @@ class SDN_switch: public node {
  public:
   int next_hop = -1;
   int origin_next_hop = -1;
-  map <unsigned int, unsigned int> neighbor_weight;
+  map <unsigned int, double> neighbor_weight;
   ~SDN_switch(){}
   string type() { return "SDN_switch"; }
 
@@ -581,9 +581,9 @@ class SDN_controller: public node {
    SDN_controller(unsigned int _id): node(_id) {} // this constructor cannot be directly called by users
 
  public:
-   vector <map<unsigned int, unsigned int> > adj_list;  //record node's cost to it's neighbor
+   vector <map<unsigned int, double> > adj_list;  //record node's cost to it's neighbor
    vector <int> route_table; //each idx it's NODEidx's next_hop
-   vector <unsigned int> dis;       //紀錄該點目前的距離
+   vector <double> dis;       //紀錄該點目前的距離
    vector <int> pre_node;  //記錄前一點
    int stat_packet_cnt;
    int tot_node;
@@ -592,9 +592,9 @@ class SDN_controller: public node {
    ~SDN_controller(){}
    string type() { return "SDN_controller"; }
    void Bellman();
-   void Relax(unsigned int node1, unsigned int node2, unsigned int cost){
+   void Relax(unsigned int node1, unsigned int node2, double cost){
      if(dis[node1] != UINT_MAX){
-       int test_cost = dis[node1]+cost;
+       double test_cost = dis[node1]+cost;
        if(test_cost < dis[node2]){
          dis[node2] = test_cost;
          pre_node[node2] = node1;
@@ -2101,7 +2101,7 @@ SDN_stat_header::SDN_stat_header_generator SDN_stat_header::SDN_stat_header_gene
 class SDN_stat_payload : public payload {
   SDN_stat_payload(SDN_stat_payload&){}
 
-  map<unsigned int,unsigned int> LinkWeight;
+  map<unsigned int,double> LinkWeight;
   int aaa;
 
  protected:
@@ -2111,8 +2111,8 @@ class SDN_stat_payload : public payload {
 
   string type() { return "SDN_stat_payload"; }
 
-  void setLinkWeight(map<unsigned int,unsigned int> _LinkWeight){ LinkWeight = _LinkWeight; }
-  map<unsigned int,unsigned int> getLinkWeight(){ return LinkWeight; }
+  void setLinkWeight(map<unsigned int,double> _LinkWeight){ LinkWeight = _LinkWeight; }
+  map<unsigned int,double> getLinkWeight(){ return LinkWeight; }
 
   class SDN_stat_payload_generator;
   friend class SDN_stat_payload_generator;
@@ -2182,7 +2182,7 @@ class SDN_stat_pkt_gen_event: public event {
    // this constructor cannot be directly called by users; only by generator
    unsigned int src; // the src
    unsigned int dst; // the dst 
-   map<unsigned int,unsigned int> LinkWeight;
+   map<unsigned int,double> LinkWeight;
    // packet *pkt; // the packet
    string msg;
 
@@ -2224,7 +2224,7 @@ class SDN_stat_pkt_gen_event: public event {
     public:
       unsigned int src_id; // the controller
       unsigned int dst_id; // the node that should update its rule
-      map<unsigned int,unsigned int> LinkWeight;
+      map<unsigned int,double> LinkWeight;
       string msg;
       // packet *_pkt;
    };
@@ -2284,7 +2284,7 @@ void SDN_stat_pkt_gen_event::print () const {
     << "   SDN_stat_packet generating"
     << endl;
 }
-void stat_packet_event (unsigned int src_id, unsigned int dst_id, map<unsigned int,unsigned int> LinkWeight, unsigned int t = event::getCurTime(), string msg = "default"){
+void stat_packet_event (unsigned int src_id, unsigned int dst_id, map<unsigned int, double> LinkWeight, unsigned int t = event::getCurTime(), string msg = "default"){
   // void stat_packet_event (unsigned int dst, unsigned int t = 0, string msg = "default"){
   if ( dst_id == BROCAST_ID || node::id_to_node(dst_id) == nullptr ) {
     cerr << "dst_id is incorrect" << endl; return;
@@ -2442,7 +2442,7 @@ void SDN_controller::recv_handler (packet *p){
     SDN_stat_packet *p3 = dynamic_cast<SDN_stat_packet*> (p);
     SDN_stat_payload *l3 = dynamic_cast<SDN_stat_payload*> (p3->getPayload());
     SDN_stat_header *h3 = dynamic_cast<SDN_stat_header*> (p3->getHeader());
-    map<unsigned int, unsigned int> link_weight = l3->getLinkWeight();
+    map<unsigned int, double> link_weight = l3->getLinkWeight();
     int node_id = h3->getSrcID();
     SDN_switch *switch_ptr;
     int idx;
@@ -2521,7 +2521,7 @@ int main()
   int tot_link;
   int con_id, weight;
   int i;
-  int del_cost;
+  double del_cost;
   SDN_switch *node_ptr1, *node_ptr2;
 
 
@@ -2539,7 +2539,8 @@ int main()
     node::id_to_node(con_id)->add_phy_neighbor(id);	
   }
 
-  map<unsigned int, unsigned int> temp_for_decl;
+  map<unsigned int, double> temp_for_decl;
+  //double for_decl;
   SDN_controller *controller = dynamic_cast<SDN_controller*> (node::id_to_node(con_id));
   controller->adj_list.assign(tot_node, temp_for_decl);
   controller->route_table.assign(tot_node, -1);
@@ -2559,7 +2560,7 @@ int main()
     (dynamic_cast<SDN_switch*> (node::id_to_node(node1)))->origin_next_hop = node2;
   }
   cin>>tot_link;
-  del_cost = (node_cost*old_path_len) / (tot_link-old_path_len);
+  del_cost = (double)(node_cost*old_path_len) / (double)(tot_link-old_path_len);
   //input new link_weight
   for(i=0; i<tot_link; i++){
     cin>>useless>>node1>>node2>>weight;
