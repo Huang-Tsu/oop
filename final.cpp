@@ -582,9 +582,9 @@ class SDN_controller: public node {
 
  public:
    vector <map<unsigned int, unsigned int> > adj_list;  //record node's cost to it's neighbor
-   vector <unsigned int> route_table; //each idx it's NODEidx's next_hop
+   vector <int> route_table; //each idx it's NODEidx's next_hop
    vector <unsigned int> dis;       //紀錄該點目前的距離
-   vector <unsigned int> pre_node;  //記錄前一點
+   vector <int> pre_node;  //記錄前一點
    int stat_packet_cnt;
    int tot_node;
    int src, dst;
@@ -2412,14 +2412,10 @@ void SDN_switch::recv_handler (packet *p){
   }
   else if (p->type() == "SDN_ctrl_upd_packet") { // the switch receives a packet from the controller
     //handler upd_packet
-    SDN_ctrl_packet *p3 = nullptr;
-    p3 = dynamic_cast<SDN_ctrl_packet*> (p);
-    SDN_ctrl_payload *l3 = nullptr;
-    l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
-
-    unsigned mat = l3->getMatID();
-    unsigned act = l3->getActID();
-    // string msg = l3->getMsg(); // get the msg
+    SDN_ctrl_upd_packet *pp = dynamic_cast<SDN_ctrl_upd_packet*> (p);
+    SDN_ctrl_upd_payload *l3 = dynamic_cast<SDN_ctrl_upd_payload*> (pp->getPayload());
+    //update packet
+    next_hop = l3->getActID();
   }
   else if(p->type() == "SDN_ctrl_del_packet"){
     //handle del_packet
@@ -2432,6 +2428,10 @@ void SDN_switch::recv_handler (packet *p){
     h3->setPreID(h3->getSrcID());
     h3->setNexID(h3->getDstID());
     send_handler(p3);
+  }
+  else if(p->type() == "SDN_ctrl_del_packet"){
+    //do nothing
+    return;
   }
 }
 void SDN_controller::recv_handler (packet *p){
@@ -2453,19 +2453,52 @@ void SDN_controller::recv_handler (packet *p){
 
     if(stat_packet_cnt == 0){
       Bellman();
-      for(idx=src; idx!=dst; idx=route_table[idx]){
+      for(idx=src; idx!=dst; idx=route_table[idx]){   //send ctrl_new
         switch_ptr = dynamic_cast<SDN_switch*> (node::id_to_node(idx));
         
         if(route_table[idx] != switch_ptr->origin_next_hop){
-          ctrl_new_packet_event(getNodeID(), idx, dst, route_table[idx], event::getCurTime());
+          if(switch_ptr->origin_next_hop != -1){  //原本有路，進行update
+            ctrl_upd_packet_event(getNodeID(), idx, dst, route_table[idx], event::getCurTime());
+          }
+          else{ //原本沒路，進行new
+            ctrl_new_packet_event(getNodeID(), idx, dst, route_table[idx], event::getCurTime());
+          }
         }
+      }
+      for(idx=src; idx!=dst; ){   //send del packet
+        switch_ptr = dynamic_cast<SDN_switch*> (node::id_to_node(idx));
+        //if(switch_ptr->origin_next_hop != -1){  //非new_packet
+          if(route_table[idx] == -1){ //現在沒有路
+            //if(switch_ptr->origin_next_hop != -1){   //但原本有路，則刪掉原本的
+              //cout<<"idx:"<<idx<<", route_table[idx]:"<<route_table[idx]<<", origin_next:"<<switch_ptr->origin_next_hop<<'\n';
+              ctrl_del_packet_event(getNodeID(), idx, dst, switch_ptr->origin_next_hop, event::getCurTime());
+            //}
+          }
+        //}
+        idx = switch_ptr->origin_next_hop;
       }
     }
   }
-  else if(p->type() == "SDN_ctrl_new_packet"){
-    	//get from ctrl_packet_event();
+  else if(p->type()=="SDN_ctrl_new_packet"){
+    	//get from ctrl_new_packet_event();
     SDN_ctrl_new_packet *p3 = dynamic_cast<SDN_ctrl_new_packet*> (p);
     SDN_ctrl_new_header *h3 = dynamic_cast<SDN_ctrl_new_header*> (p3->getHeader());
+    h3->setPreID(getNodeID());
+    h3->setNexID(h3->getDstID());
+    send_handler(p3);
+  }
+  else if(p->type()=="SDN_ctrl_del_packet"){
+    	//get from ctrl_del_packet_event();
+    SDN_ctrl_del_packet *p3 = dynamic_cast<SDN_ctrl_del_packet*> (p);
+    SDN_ctrl_del_header *h3 = dynamic_cast<SDN_ctrl_del_header*> (p3->getHeader());
+    h3->setPreID(getNodeID());
+    h3->setNexID(h3->getDstID());
+    send_handler(p3);
+  }
+  else if(p->type()=="SDN_ctrl_upd_packet"){
+    	//get from ctrl_upd_packet_event();
+    SDN_ctrl_upd_packet *p3 = dynamic_cast<SDN_ctrl_upd_packet*> (p);
+    SDN_ctrl_upd_header *h3 = dynamic_cast<SDN_ctrl_upd_header*> (p3->getHeader());
     h3->setPreID(getNodeID());
     h3->setNexID(h3->getDstID());
     send_handler(p3);
@@ -2488,6 +2521,7 @@ int main()
   int tot_link;
   int con_id, weight;
   int i;
+  int del_cost;
   SDN_switch *node_ptr1, *node_ptr2;
 
 
@@ -2525,6 +2559,7 @@ int main()
     (dynamic_cast<SDN_switch*> (node::id_to_node(node1)))->origin_next_hop = node2;
   }
   cin>>tot_link;
+  del_cost = (node_cost*old_path_len) / (tot_link-old_path_len);
   //input new link_weight
   for(i=0; i<tot_link; i++){
     cin>>useless>>node1>>node2>>weight;
@@ -2532,14 +2567,14 @@ int main()
     node_ptr2 = dynamic_cast<SDN_switch*> (node::id_to_node(node2));
     //update node1
     if(node_ptr1->origin_next_hop != node2){   //兩者原本之間沒有路 需要更動，其tottal cost要+上更動的cost
-      node_ptr1->neighbor_weight[node2] = weight + node_cost;
+      node_ptr1->neighbor_weight[node2] = weight + node_cost + del_cost;
     }
     else{   //next_hop == node2 兩者原本之間有路
       node_ptr1->neighbor_weight[node2] = weight;
     }
     //update node 2
     if(node_ptr2->origin_next_hop != node1){   //兩者原本之間沒有路 需要更動，其tottal cost要+上更動的cost
-      node_ptr2->neighbor_weight[node1] = weight + node_cost;
+      node_ptr2->neighbor_weight[node1] = weight + node_cost + del_cost;
     }
     else{   //next_hop == node2 兩者原本之間有路
       node_ptr2->neighbor_weight[node1] = weight;
