@@ -542,7 +542,8 @@ class SDN_switch: public node {
   SDN_switch(unsigned int _id): node(_id), hi(false) {} // this constructor cannot be directly called by users
 
  public:
-  int next_hop;
+  int next_hop = -1;
+  int origin_next_hop = -1;
   map <unsigned int, unsigned int> neighbor_weight;
   ~SDN_switch(){}
   string type() { return "SDN_switch"; }
@@ -580,9 +581,26 @@ class SDN_controller: public node {
    SDN_controller(unsigned int _id): node(_id) {} // this constructor cannot be directly called by users
 
  public:
-   vector <map<unsigned int, unsigned int> > adj_list;
+   vector <map<unsigned int, unsigned int> > adj_list;  //record node's cost to it's neighbor
+   vector <unsigned int> route_table; //each idx it's NODEidx's next_hop
+   vector <unsigned int> dis;       //紀錄該點目前的距離
+   vector <unsigned int> pre_node;  //記錄前一點
+   int stat_packet_cnt;
+   int tot_node;
+   int src, dst;
+   //vector <unsigned int> node_cost;  //each idx it's NODEidx's cost 
    ~SDN_controller(){}
    string type() { return "SDN_controller"; }
+   void Bellman();
+   void Relax(unsigned int node1, unsigned int node2, unsigned int cost){
+     if(dis[node1] != UINT_MAX){
+       int test_cost = dis[node1]+cost;
+       if(test_cost < dis[node2]){
+         dis[node2] = test_cost;
+         pre_node[node2] = node1;
+       }
+     }
+   }
 
    // please define recv_handler function to deal with the incoming packet
    virtual void recv_handler (packet *p);
@@ -605,6 +623,30 @@ class SDN_controller: public node {
    };
 };
 SDN_controller::SDN_controller_generator SDN_controller::SDN_controller_generator::sample;
+
+void SDN_controller::Bellman(){
+  int idx;
+  //initialize, route_table, dis, pre_node have been initialized in main()
+  dis[src] = 0; //set src's distance to 0
+
+  //Bellman
+  for(int i=0; i<tot_node-1; i++){  //共作tot_node-1次
+    for(idx=0 ;idx<tot_node; idx++){  //traver each node in vector
+      for(auto iter=adj_list[idx].begin(); iter!=adj_list[idx].end(); iter++){ //traver each link of this node(idx)
+        Relax(idx, iter->first, iter->second); //Relax(node1, node2, cost);
+      }
+    }
+  }
+
+  //construct route table
+  for(idx=dst; idx!=src; idx=pre_node[idx]){  //traverse from dst to route
+    route_table[pre_node[idx]] = idx;
+  }
+      //  //test
+      //  for(idx=src; idx!=dst; idx=route_table[idx]){
+      //    cout<<"node_now:"<<idx<<", next_node:"<<route_table[idx]<<'\n';
+      //  }
+}
 
 class mycomp {
   bool reverse;
@@ -2396,14 +2438,28 @@ void SDN_controller::recv_handler (packet *p){
   if (p == nullptr) return ;
 
   if(p->type() == "SDN_stat_packet"){
+    stat_packet_cnt --;
     SDN_stat_packet *p3 = dynamic_cast<SDN_stat_packet*> (p);
     SDN_stat_payload *l3 = dynamic_cast<SDN_stat_payload*> (p3->getPayload());
     SDN_stat_header *h3 = dynamic_cast<SDN_stat_header*> (p3->getHeader());
     map<unsigned int, unsigned int> link_weight = l3->getLinkWeight();
     int node_id = h3->getSrcID();
+    SDN_switch *switch_ptr;
+    int idx;
 
     for(auto iter=link_weight.begin(); iter!=link_weight.end(); iter++){
       adj_list[node_id][iter->first] = iter->second; 
+    }
+
+    if(stat_packet_cnt == 0){
+      Bellman();
+      for(idx=src; idx!=dst; idx=route_table[idx]){
+        switch_ptr = dynamic_cast<SDN_switch*> (node::id_to_node(idx));
+        
+        if(route_table[idx] != switch_ptr->origin_next_hop){
+          ctrl_new_packet_event(getNodeID(), idx, dst, route_table[idx], event::getCurTime());
+        }
+      }
     }
   }
   else if(p->type() == "SDN_ctrl_new_packet"){
@@ -2432,6 +2488,7 @@ int main()
   int tot_link;
   int con_id, weight;
   int i;
+  SDN_switch *node_ptr1, *node_ptr2;
 
 
   //read input
@@ -2451,6 +2508,13 @@ int main()
   map<unsigned int, unsigned int> temp_for_decl;
   SDN_controller *controller = dynamic_cast<SDN_controller*> (node::id_to_node(con_id));
   controller->adj_list.assign(tot_node, temp_for_decl);
+  controller->route_table.assign(tot_node, -1);
+  controller->pre_node.assign(tot_node, -1);
+  controller->dis.assign(tot_node, UINT_MAX);
+  controller->tot_node = tot_node;
+  controller->stat_packet_cnt = tot_node;
+  controller->src = src_id;
+  controller->dst = dst_id;
 
   //construct original path
   for(i=0; i<old_path_len; i++){
@@ -2458,13 +2522,28 @@ int main()
     //node::id_to_node(node1)->add_phy_neighbor(node2);
     //node::id_to_node(node2)->add_phy_neighbor(node1);
     ctrl_new_packet_event(con_id, node1, dst_id, node2, ins_time);
+    (dynamic_cast<SDN_switch*> (node::id_to_node(node1)))->origin_next_hop = node2;
   }
   cin>>tot_link;
   //input new link_weight
   for(i=0; i<tot_link; i++){
     cin>>useless>>node1>>node2>>weight;
-    (dynamic_cast<SDN_switch*> (node::id_to_node(node1)))->neighbor_weight[node2] = weight;
-    (dynamic_cast<SDN_switch*> (node::id_to_node(node2)))->neighbor_weight[node1] = weight;
+    node_ptr1 = dynamic_cast<SDN_switch*> (node::id_to_node(node1));
+    node_ptr2 = dynamic_cast<SDN_switch*> (node::id_to_node(node2));
+    //update node1
+    if(node_ptr1->origin_next_hop != node2){   //兩者原本之間沒有路 需要更動，其tottal cost要+上更動的cost
+      node_ptr1->neighbor_weight[node2] = weight + node_cost;
+    }
+    else{   //next_hop == node2 兩者原本之間有路
+      node_ptr1->neighbor_weight[node2] = weight;
+    }
+    //update node 2
+    if(node_ptr2->origin_next_hop != node1){   //兩者原本之間沒有路 需要更動，其tottal cost要+上更動的cost
+      node_ptr2->neighbor_weight[node1] = weight + node_cost;
+    }
+    else{   //next_hop == node2 兩者原本之間有路
+      node_ptr2->neighbor_weight[node1] = weight;
+    }
     node::id_to_node(node1)->add_phy_neighbor(node2);
     node::id_to_node(node2)->add_phy_neighbor(node1);
   }
@@ -2480,61 +2559,6 @@ int main()
     data_packet_event(src, dst, t);
   }
 
-  // set switches' neighbors
-  //node::id_to_node(0)->add_phy_neighbor(2);
-  //node::id_to_node(2)->add_phy_neighbor(0);
-  //node::id_to_node(1)->add_phy_neighbor(2);
-  //node::id_to_node(2)->add_phy_neighbor(1);
-  //node::id_to_node(1)->add_phy_neighbor(3);
-  //node::id_to_node(3)->add_phy_neighbor(1);
-  //node::id_to_node(2)->add_phy_neighbor(4);
-  //node::id_to_node(4)->add_phy_neighbor(2);
-
-
-  //// generate all initial events that you want to simulate in the networks
-  //// read the input and use data_packet_event to add an initial event
-  //// 1st parameter: the source node
-  //// 2nd parameter: the destination node
-  //// 3rd parameter: time
-  //// 4th parameter: msg for debug (optional)
-
-  //// dst = 0;
-  //for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-  //  // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-  //  ctrl_packet_event(con_id, id, id, id+1, 100);
-  //  // note that we don't need to use msg for network update anymore in hw3
-  //  // thus, function ctrl_packet_event is updated as follows:
-  //  // 1st parameter: the node that has to update the rule
-  //  // 2nd parameter: the target node of the rule (i.e., match ID)
-  //  // 3rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID)
-  //  // 4th parameter: time (optional)
-  //  // 5th parameter: msg for debug (optional)
-
-  //  // !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
-  //  // !!!! to generate the new ctrl msg in the next round
-  //}
-  //for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-  //  // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-  //  ctrl_new_packet_event(con_id, id, id, id+1, 200);
-
-  //}
-  //for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-  //  // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-  //  ctrl_del_packet_event(con_id, id, id, id+1, 300);
-
-  //}
-  //for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-  //  // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-  //  ctrl_upd_packet_event(con_id, id, id, id+1, 400);
-
-  //}
-  //for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-  //  // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-  //  map<unsigned int,unsigned int> link_weight;
-  //  stat_packet_event(id, con_id, link_weight, 0);
-
-  //}
-  // start simulation!!
   event::start_simulate(sim_duration);
   // event::flush_events() ;
   // cout << packet::getLivePacketNum() << endl;
